@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Planning Poker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .connecting-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .connecting-box {
+            background: white;
+            padding: 30px 40px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+        .connecting-box .spinner {
+            width: 40px;
+            height: 40px;
+            border-width: 4px;
+            margin-bottom: 15px;
+        }
+        .connecting-box p {
+            color: #4a5568;
+            font-size: 16px;
+            font-weight: 500;
+        }
+        .session-info {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .info-box {
+            background: #f7fafc;
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+        }
+        .info-box label {
+            font-size: 12px;
+            color: #718096;
+            display: block;
+            margin-bottom: 3px;
+        }
+        .info-box span {
+            font-weight: bold;
+            color: #2d3748;
+            font-size: 14px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-1px);
+        }
+        button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .join-section {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        input {
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 250px;
+            margin-right: 10px;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .participants {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .participants h2 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .participant-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        .participant-card.voted {
+            border-color: #48bb78;
+            background: #f0fff4;
+        }
+        .participant-card.voted::after {
+            content: '✓';
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #48bb78;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .participant-card {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid #e2e8f0;
+            transition: all 0.3s;
+            position: relative;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .participant-card.revealed {
+            border-color: #667eea;
+        }
+        .participant-name {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+            min-height: 20px;
+        }
+        .participant-vote {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 36px;
+        }
+        .participant-vote.hidden {
+            color: #48bb78;
+        }
+        .voting-section {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .voting-section h2 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .cards {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .card {
+            width: 60px;
+            height: 80px;
+            background: white;
+            border: 3px solid #667eea;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #667eea;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
+        }
+        .card.selected {
+            background: #667eea;
+            color: white;
+            transform: translateY(-5px);
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        .btn-danger {
+            background: #e53e3e;
+        }
+        .btn-danger:hover {
+            background: #c53030;
+        }
+        .status {
+            background: #edf2f7;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #4a5568;
+        }
+        .results {
+            background: #f0fff4;
+            border: 2px solid #48bb78;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .results h3 {
+            color: #22543d;
+            margin-bottom: 10px;
+        }
+        .results-stats {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .stat {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #718096;
+        }
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #22543d;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🃏 P2P PP - Planning Poker</h1>
+            <div class="session-info">
+                <div class="info-box">
+                    <label>Your Name</label>
+                    <span id="yourName">-</span>
+                </div>
+                <div class="info-box">
+                    <label>Room ID</label>
+                    <span id="sessionId">-</span>
+                </div>
+                <div class="info-box">
+                    <label>Status</label>
+                    <span id="connectionStatus">Disconnected</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="joinSection" class="join-section">
+            <h2 style="margin-bottom: 20px; color: #2d3748;">Start or Join a Room</h2>
+            <div style="margin-bottom: 20px;">
+                <input type="text" id="nameInput" placeholder="Your name" onkeypress="handleEnter(event, 'create')" />
+                <button onclick="createSession()">Create Room</button>
+            </div>
+            <div>
+                <input type="text" id="nameInputJoin" placeholder="Your name" onkeypress="handleEnter(event, 'join')" />
+                <input type="text" id="sessionIdInput" placeholder="Room ID" onkeypress="handleEnter(event, 'join')" />
+                <button onclick="joinSession()">Join Room</button>
+            </div>
+        </div>
+
+        <div id="connectingOverlay" class="connecting-overlay hidden">
+            <div class="connecting-box">
+                <div class="spinner"></div>
+                <p id="connectingText">Connecting...</p>
+            </div>
+        </div>
+
+        <div id="gameSection" class="hidden">
+            <div class="participants">
+                <h2>Participants</h2>
+                <div class="participant-grid" id="participantGrid"></div>
+            </div>
+
+            <div class="voting-section">
+                <h2>Cast Your Vote</h2>
+                <div class="cards" id="cardContainer"></div>
+                <div class="controls">
+                    <button onclick="revealVotes()" id="revealBtn">Reveal Votes</button>
+                    <button onclick="resetVotes()">New Round</button>
+                    <button onclick="leaveRoom()" class="btn-danger" id="leaveBtn">Leave Room</button>
+                    <button onclick="closeRoom()" class="btn-danger" id="closeBtn" style="display: none;">Close Room</button>
+                </div>
+                <div id="results" class="results hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const CARD_VALUES = ['0', '1', '2', '3', '5', '8', '13', '21', '?', '☕'];
+        
+        let peer = null;
+        let connections = [];
+        let myName = '';
+        let myVote = null;
+        let participants = {};
+        let isHost = false;
+        let revealed = false;
+        let roomId = null;
+
+        // Generate short room ID (6 characters)
+        function generateRoomId() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+
+        // Check URL for room ID on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlRoomId = urlParams.get('room');
+            
+            if (urlRoomId) {
+                document.getElementById('sessionIdInput').value = urlRoomId;
+                document.getElementById('sessionId').textContent = urlRoomId;
+                
+                // Hide create room option, show only join
+                const joinSection = document.getElementById('joinSection');
+                joinSection.innerHTML = `
+                    <h2 style="margin-bottom: 20px; color: #2d3748;">Join Room: ${urlRoomId}</h2>
+                    <div>
+                        <input type="text" id="nameInputDirect" placeholder="Your name" onkeypress="handleEnter(event, 'direct', '${urlRoomId}')" />
+                        <button onclick="joinSessionDirect('${urlRoomId}')">Join Room</button>
+                    </div>
+                `;
+            }
+        });
+
+        function handleEnter(event, type, roomId = null) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (type === 'create') {
+                    createSession();
+                } else if (type === 'join') {
+                    joinSession();
+                } else if (type === 'direct' && roomId) {
+                    joinSessionDirect(roomId);
+                }
+            }
+        }
+
+        function showConnecting(text = 'Connecting...') {
+            document.getElementById('connectingText').textContent = text;
+            document.getElementById('connectingOverlay').classList.remove('hidden');
+        }
+
+        function hideConnecting() {
+            document.getElementById('connectingOverlay').classList.add('hidden');
+        }
+
+        function createSession() {
+            const name = document.getElementById('nameInput').value.trim();
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+            
+            myName = name;
+            isHost = true;
+            roomId = generateRoomId();
+            
+            showConnecting('Creating room...');
+            document.getElementById('connectionStatus').textContent = 'Connecting...';
+            
+            // Use custom short ID as peer ID with faster STUN servers
+            peer = new Peer(roomId, {
+                debug: 2,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun.cloudflare.com:3478' }
+                    ],
+                    iceTransportPolicy: 'all',
+                    iceCandidatePoolSize: 10
+                }
+            });
+            
+            peer.on('open', (id) => {
+                console.log('Peer opened with ID:', id);
+                hideConnecting();
+                document.getElementById('sessionId').textContent = roomId;
+                document.getElementById('yourName').textContent = myName;
+                document.getElementById('connectionStatus').textContent = 'Connected (Host)';
+                
+                // Update URL with room ID
+                const baseUrl = window.location.origin + window.location.pathname;
+                const shareUrl = baseUrl + '?room=' + roomId;
+                window.history.pushState({}, '', '?room=' + roomId);
+                
+                document.getElementById('joinSection').innerHTML = `
+                    <h2 style="margin-bottom: 15px; color: #2d3748;">Room Created!</h2>
+                    <p style="margin-bottom: 15px; color: #4a5568;">Share this URL with your team:</p>
+                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #e2e8f0;">
+                        <input type="text" value="${shareUrl}" readonly 
+                               style="width: 100%; background: white;" 
+                               onclick="this.select()" />
+                    </div>
+                    <button onclick="copyShareUrl('${shareUrl}')">Copy Link</button>
+                `;
+                
+                setTimeout(() => {
+                    document.getElementById('joinSection').classList.add('hidden');
+                    document.getElementById('gameSection').classList.remove('hidden');
+                }, 3000);
+                
+                participants[id] = { name: myName, vote: null, peerId: id };
+                updateParticipants();
+                setupCards();
+                
+                // Show close button for host
+                document.getElementById('closeBtn').style.display = 'inline-block';
+            });
+            
+            peer.on('connection', (conn) => {
+                console.log('Incoming connection from:', conn.peer);
+                connections.push(conn);
+                setupConnection(conn);
+            });
+            
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                hideConnecting();
+                if (err.type === 'unavailable-id') {
+                    // ID taken, try again with new ID
+                    createSession();
+                } else {
+                    alert('Connection error: ' + err.type + '. Please try again.');
+                    document.getElementById('connectionStatus').textContent = 'Error - Retry';
+                }
+            });
+            
+            peer.on('disconnected', () => {
+                console.log('Peer disconnected');
+                document.getElementById('connectionStatus').textContent = 'Disconnected';
+            });
+        }
+
+        function copyShareUrl(url) {
+            navigator.clipboard.writeText(url).then(() => {
+                alert('Link copied to clipboard!');
+            }).catch(() => {
+                alert('Failed to copy. Please copy manually.');
+            });
+        }
+
+        function joinSession() {
+            const name = document.getElementById('nameInputJoin').value.trim();
+            const sessionId = document.getElementById('sessionIdInput').value.trim().toUpperCase();
+            
+            if (!name || !sessionId) {
+                alert('Please enter your name and room ID');
+                return;
+            }
+            
+            joinSessionDirect(sessionId, name);
+        }
+
+        function joinSessionDirect(sessionId, name = null) {
+            if (!name) {
+                name = document.getElementById('nameInputDirect').value.trim();
+            }
+            
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+            
+            myName = name;
+            isHost = false;
+            roomId = sessionId;
+            
+            showConnecting('Joining room...');
+            document.getElementById('connectionStatus').textContent = 'Connecting...';
+            
+            // Use PeerJS with faster STUN servers
+            peer = new Peer(undefined, {
+                debug: 2,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun.cloudflare.com:3478' }
+                    ],
+                    iceTransportPolicy: 'all',
+                    iceCandidatePoolSize: 10
+                }
+            });
+            
+            peer.on('open', (id) => {
+                console.log('Peer opened with ID:', id);
+                document.getElementById('yourName').textContent = myName;
+                document.getElementById('sessionId').textContent = sessionId;
+                
+                const conn = peer.connect(sessionId);
+                connections.push(conn);
+                setupConnection(conn);
+                setupCards();
+                
+                conn.on('open', () => {
+                    console.log('Connection opened to:', sessionId);
+                    hideConnecting();
+                    document.getElementById('connectionStatus').textContent = 'Connected';
+                    document.getElementById('joinSection').classList.add('hidden');
+                    document.getElementById('gameSection').classList.remove('hidden');
+                    
+                    conn.send({
+                        type: 'join',
+                        name: myName,
+                        peerId: id
+                    });
+                });
+                
+                conn.on('error', (err) => {
+                    console.error('Connection error:', err);
+                    hideConnecting();
+                    alert('Failed to connect to room. Please check the Room ID.');
+                });
+            });
+            
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                hideConnecting();
+                alert('Connection error: ' + err.type + '. Please try again.');
+                document.getElementById('connectionStatus').textContent = 'Error - Retry';
+            });
+            
+            peer.on('disconnected', () => {
+                console.log('Peer disconnected');
+                document.getElementById('connectionStatus').textContent = 'Disconnected';
+            });
+        }
+
+        function setupConnection(conn) {
+            conn.on('data', (data) => {
+                handleMessage(data, conn);
+            });
+            
+            conn.on('close', () => {
+                connections = connections.filter(c => c !== conn);
+                if (participants[conn.peer]) {
+                    delete participants[conn.peer];
+                    updateParticipants();
+                }
+                
+                // If host disconnected, show error and redirect
+                if (!isHost && conn.peer === roomId) {
+                    alert('The host has closed the room.');
+                    redirectToLogin('Room closed by host');
+                }
+            });
+            
+            conn.on('error', (err) => {
+                console.error('Connection error:', err);
+            });
+        }
+
+        function handleMessage(data, conn) {
+            switch(data.type) {
+                case 'join':
+                    participants[data.peerId] = { 
+                        name: data.name, 
+                        vote: null,
+                        peerId: data.peerId
+                    };
+                    updateParticipants();
+                    
+                    if (isHost) {
+                        broadcast({
+                            type: 'participants',
+                            participants: participants,
+                            revealed: revealed
+                        });
+                    }
+                    break;
+                    
+                case 'participants':
+                    participants = data.participants;
+                    revealed = data.revealed;
+                    updateParticipants();
+                    break;
+                    
+                case 'vote':
+                    if (participants[data.peerId]) {
+                        participants[data.peerId].vote = data.vote;
+                        updateParticipants();
+                        
+                        if (isHost) {
+                            broadcast({
+                                type: 'participants',
+                                participants: participants,
+                                revealed: revealed
+                            });
+                        }
+                    }
+                    break;
+                    
+                case 'reveal':
+                    revealed = true;
+                    updateParticipants();
+                    showResults();
+                    break;
+                    
+                case 'reset':
+                    revealed = false;
+                    myVote = null;
+                    for (let id in participants) {
+                        participants[id].vote = null;
+                    }
+                    updateParticipants();
+                    document.getElementById('results').classList.add('hidden');
+                    document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+                    break;
+                    
+                case 'room_closed':
+                    alert('The host has closed the room.');
+                    redirectToLogin('Room closed by host');
+                    break;
+            }
+        }
+
+        function broadcast(data) {
+            connections.forEach(conn => {
+                if (conn.open) {
+                    conn.send(data);
+                }
+            });
+        }
+
+        function setupCards() {
+            const container = document.getElementById('cardContainer');
+            container.innerHTML = '';
+            
+            CARD_VALUES.forEach(value => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.textContent = value;
+                card.onclick = () => selectCard(value, card);
+                container.appendChild(card);
+            });
+        }
+
+        function selectCard(value, cardElement) {
+            if (revealed) return;
+            
+            myVote = value;
+            participants[peer.id].vote = value;
+            
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+            cardElement.classList.add('selected');
+            
+            broadcast({
+                type: 'vote',
+                vote: value,
+                peerId: peer.id
+            });
+            
+            updateParticipants();
+        }
+
+        function updateParticipants() {
+            const grid = document.getElementById('participantGrid');
+            grid.innerHTML = '';
+            
+            for (let id in participants) {
+                const p = participants[id];
+                const card = document.createElement('div');
+                card.className = 'participant-card';
+                
+                if (p.vote !== null) {
+                    card.classList.add('voted');
+                }
+                if (revealed) {
+                    card.classList.add('revealed');
+                }
+                
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'participant-name';
+                nameDiv.textContent = p.name + (id === peer.id ? ' (You)' : '');
+                
+                const voteDiv = document.createElement('div');
+                voteDiv.className = 'participant-vote';
+                
+                if (revealed && p.vote !== null) {
+                    voteDiv.textContent = p.vote;
+                } else if (p.vote !== null) {
+                    voteDiv.className = 'participant-vote hidden';
+                    voteDiv.textContent = '✓';
+                } else {
+                    voteDiv.textContent = '-';
+                }
+                
+                card.appendChild(nameDiv);
+                card.appendChild(voteDiv);
+                grid.appendChild(card);
+            }
+        }
+
+        function revealVotes() {
+            revealed = true;
+            broadcast({ type: 'reveal' });
+            updateParticipants();
+            showResults();
+        }
+
+        function showResults() {
+            const votes = Object.values(participants)
+                .map(p => p.vote)
+                .filter(v => v !== null && v !== '?' && v !== '☕')
+                .map(v => parseFloat(v));
+            
+            if (votes.length === 0) {
+                return;
+            }
+            
+            const avg = votes.reduce((a, b) => a + b, 0) / votes.length;
+            const min = Math.min(...votes);
+            const max = Math.max(...votes);
+            
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = `
+                <h3>Results</h3>
+                <div class="results-stats">
+                    <div class="stat">
+                        <div class="stat-label">Average</div>
+                        <div class="stat-value">${avg.toFixed(1)}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Minimum</div>
+                        <div class="stat-value">${min}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Maximum</div>
+                        <div class="stat-value">${max}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Votes</div>
+                        <div class="stat-value">${votes.length}</div>
+                    </div>
+                </div>
+            `;
+            resultsDiv.classList.remove('hidden');
+        }
+
+        function resetVotes() {
+            revealed = false;
+            myVote = null;
+            
+            for (let id in participants) {
+                participants[id].vote = null;
+            }
+            
+            broadcast({ type: 'reset' });
+            updateParticipants();
+            document.getElementById('results').classList.add('hidden');
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+        }
+
+        function leaveRoom() {
+            if (confirm('Are you sure you want to leave this room?')) {
+                if (peer) {
+                    peer.destroy();
+                }
+                redirectToLogin('You left the room');
+            }
+        }
+
+        function closeRoom() {
+            if (!isHost) return;
+            
+            if (confirm('Are you sure you want to close this room? All participants will be disconnected.')) {
+                broadcast({ type: 'room_closed' });
+                
+                setTimeout(() => {
+                    if (peer) {
+                        peer.destroy();
+                    }
+                    redirectToLogin('Room closed');
+                }, 500);
+            }
+        }
+
+        function redirectToLogin(message = '') {
+            // Clear state
+            peer = null;
+            connections = [];
+            participants = {};
+            myVote = null;
+            revealed = false;
+            isHost = false;
+            roomId = null;
+            
+            // Reset URL
+            window.history.pushState({}, '', window.location.pathname);
+            
+            // Show login screen
+            document.getElementById('gameSection').classList.add('hidden');
+            document.getElementById('joinSection').classList.remove('hidden');
+            document.getElementById('joinSection').innerHTML = `
+                <h2 style="margin-bottom: 20px; color: #2d3748;">Start or Join a Room</h2>
+                ${message ? `<div style="background: #fed7d7; color: #c53030; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #fc8181;">${message}</div>` : ''}
+                <div style="margin-bottom: 20px;">
+                    <input type="text" id="nameInput" placeholder="Your name" onkeypress="handleEnter(event, 'create')" />
+                    <button onclick="createSession()">Create Room</button>
+                </div>
+                <div>
+                    <input type="text" id="nameInputJoin" placeholder="Your name" onkeypress="handleEnter(event, 'join')" />
+                    <input type="text" id="sessionIdInput" placeholder="Room ID" onkeypress="handleEnter(event, 'join')" />
+                    <button onclick="joinSession()">Join Room</button>
+                </div>
+            `;
+            
+            // Reset header
+            document.getElementById('yourName').textContent = '-';
+            document.getElementById('sessionId').textContent = '-';
+            document.getElementById('connectionStatus').textContent = 'Disconnected';
+        }
+    </script>
+</body>
+</html>
