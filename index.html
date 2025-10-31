@@ -249,6 +249,10 @@
         .participant-card.revealed {
             border-color: var(--primary);
         }
+        /* Ensure voted state keeps success border even if also revealed */
+        .participant-card.voted.revealed {
+            border-color: var(--success);
+        }
         .participant-name {
             font-weight: 600;
             color: var(--text);
@@ -265,8 +269,12 @@
             justify-content: center;
             line-height: 36px;
         }
-        .participant-vote.hidden {
+        .participant-vote.voted {
             color: var(--success);
+        }
+        /* In dark theme, show revealed vote numbers using the same green as .stat-value */
+        [data-theme="dark"] .participant-card.revealed .participant-vote {
+            color: var(--results-text);
         }
         .voting-section {
             background: var(--surface);
@@ -877,7 +885,7 @@
                 if (revealed && p.vote !== null) {
                     voteDiv.textContent = p.vote;
                 } else if (p.vote !== null) {
-                    voteDiv.className = 'participant-vote hidden';
+                    voteDiv.className = 'participant-vote voted';
                     voteDiv.textContent = '✓';
                 } else {
                     voteDiv.textContent = '-';
