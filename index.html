@@ -6,6 +6,46 @@
     <title>P2P Planning Poker</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
     <style>
+        :root {
+            --bg-gradient-start: #667eea;
+            --bg-gradient-end: #764ba2;
+            --surface: #ffffff;
+            --surface-muted: #f7fafc;
+            --surface-accent: #edf2f7;
+            --text: #2d3748;
+            --text-muted: #4a5568;
+            --text-subtle: #718096;
+            --primary: #667eea;
+            --primary-hover: #5568d3;
+            --border: #e2e8f0;
+            --success: #48bb78;
+            --success-bg: #f0fff4;
+            --danger: #e53e3e;
+            --danger-hover: #c53030;
+            --results-text: #22543d;
+            --shadow-color: rgba(0,0,0,0.1);
+            --overlay: rgba(0,0,0,0.5);
+        }
+        [data-theme="dark"] {
+            --bg-gradient-start: #0f172a;
+            --bg-gradient-end: #1f2937;
+            --surface: #111827;
+            --surface-muted: #0b1220;
+            --surface-accent: #1f2937;
+            --text: #e5e7eb;
+            --text-muted: #cbd5e1;
+            --text-subtle: #94a3b8;
+            --primary: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --border: #334155;
+            --success: #22c55e;
+            --success-bg: #052e1b;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --results-text: #86efac;
+            --shadow-color: rgba(0,0,0,0.5);
+            --overlay: rgba(0, 0, 0, 0.6);
+        }
         * {
             margin: 0;
             padding: 0;
@@ -13,31 +53,46 @@
         }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
             min-height: 100vh;
             padding: 20px;
+            color: var(--text);
         }
         .container {
             max-width: 1200px;
             margin: 0 auto;
         }
         .header {
-            background: white;
+            background: var(--surface);
             padding: 20px;
+            padding-right: 160px;
             border-radius: 12px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px var(--shadow-color);
+            position: relative;
         }
         h1 {
-            color: #667eea;
+            color: var(--primary);
             margin-bottom: 15px;
             display: flex;
             align-items: center;
             gap: 10px;
         }
+        h2, h3 {
+            color: var(--text);
+        }
+        .share-box {
+            background: var(--surface-muted);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 2px solid var(--border);
+        }
+        .full-width { width: 100%; }
+        .header .header-actions { position: absolute; top: 20px; right: 20px; margin-top: 0; display: flex; gap: 10px; flex-wrap: wrap; }
         .spinner {
-            border: 3px solid #f3f4f6;
-            border-top: 3px solid #667eea;
+            border: 3px solid var(--surface-accent);
+            border-top: 3px solid var(--primary);
             border-radius: 50%;
             width: 24px;
             height: 24px;
@@ -54,18 +109,18 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
+            background: var(--overlay);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 1000;
         }
         .connecting-box {
-            background: white;
+            background: var(--surface);
             padding: 30px 40px;
             border-radius: 12px;
             text-align: center;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 25px var(--shadow-color);
         }
         .connecting-box .spinner {
             width: 40px;
@@ -74,7 +129,7 @@
             margin-bottom: 15px;
         }
         .connecting-box p {
-            color: #4a5568;
+            color: var(--text-muted);
             font-size: 16px;
             font-weight: 500;
         }
@@ -85,24 +140,24 @@
             align-items: center;
         }
         .info-box {
-            background: #f7fafc;
+            background: var(--surface-muted);
             padding: 10px 15px;
             border-radius: 8px;
-            border: 2px solid #e2e8f0;
+            border: 2px solid var(--border);
         }
         .info-box label {
             font-size: 12px;
-            color: #718096;
+            color: var(--text-subtle);
             display: block;
             margin-bottom: 3px;
         }
         .info-box span {
             font-weight: bold;
-            color: #2d3748;
+            color: var(--text);
             font-size: 14px;
         }
         button {
-            background: #667eea;
+            background: var(--primary);
             color: white;
             border: none;
             padding: 10px 20px;
@@ -113,42 +168,44 @@
             transition: all 0.3s;
         }
         button:hover {
-            background: #5568d3;
+            background: var(--primary-hover);
             transform: translateY(-1px);
         }
         button:disabled {
-            background: #cbd5e0;
+            background: var(--border);
             cursor: not-allowed;
             transform: none;
         }
         .join-section {
-            background: white;
+            background: var(--surface);
             padding: 30px;
             border-radius: 12px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px var(--shadow-color);
         }
         input {
             padding: 10px;
-            border: 2px solid #e2e8f0;
+            border: 2px solid var(--border);
             border-radius: 8px;
             font-size: 14px;
             width: 250px;
             margin-right: 10px;
+            background: var(--surface);
+            color: var(--text);
         }
         input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--primary);
         }
         .participants {
-            background: white;
+            background: var(--surface);
             padding: 20px;
             border-radius: 12px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px var(--shadow-color);
         }
         .participants h2 {
-            color: #2d3748;
+            color: var(--text);
             margin-bottom: 15px;
             font-size: 18px;
         }
@@ -158,15 +215,14 @@
             gap: 15px;
         }
         .participant-card.voted {
-            border-color: #48bb78;
-            background: #f0fff4;
+            border-color: var(--success);
+            background: var(--success-bg);
         }
         .participant-card.voted::after {
-            content: '✓';
             position: absolute;
             top: 5px;
             right: 5px;
-            background: #48bb78;
+            background: var(--success);
             color: white;
             width: 24px;
             height: 24px;
@@ -178,11 +234,11 @@
             font-size: 16px;
         }
         .participant-card {
-            background: #f7fafc;
+            background: var(--surface-muted);
             padding: 15px;
             border-radius: 8px;
             text-align: center;
-            border: 2px solid #e2e8f0;
+            border: 2px solid var(--border);
             transition: all 0.3s;
             position: relative;
             min-height: 120px;
@@ -191,18 +247,18 @@
             justify-content: space-between;
         }
         .participant-card.revealed {
-            border-color: #667eea;
+            border-color: var(--primary);
         }
         .participant-name {
             font-weight: 600;
-            color: #2d3748;
+            color: var(--text);
             margin-bottom: 8px;
             min-height: 20px;
         }
         .participant-vote {
             font-size: 24px;
             font-weight: bold;
-            color: #667eea;
+            color: var(--primary);
             height: 36px;
             display: flex;
             align-items: center;
@@ -210,17 +266,17 @@
             line-height: 36px;
         }
         .participant-vote.hidden {
-            color: #48bb78;
+            color: var(--success);
         }
         .voting-section {
-            background: white;
+            background: var(--surface);
             padding: 20px;
             border-radius: 12px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px var(--shadow-color);
         }
         .voting-section h2 {
-            color: #2d3748;
+            color: var(--text);
             margin-bottom: 15px;
             font-size: 18px;
         }
@@ -233,15 +289,15 @@
         .card {
             width: 60px;
             height: 80px;
-            background: white;
-            border: 3px solid #667eea;
+            background: var(--surface);
+            border: 3px solid var(--primary);
             border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 20px;
             font-weight: bold;
-            color: #667eea;
+            color: var(--primary);
             cursor: pointer;
             transition: all 0.3s;
         }
@@ -249,8 +305,11 @@
             transform: translateY(-5px);
             box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
         }
+        [data-theme="dark"] .card:hover {
+            box-shadow: 0 6px 12px rgba(139, 92, 246, 0.25);
+        }
         .card.selected {
-            background: #667eea;
+            background: var(--primary);
             color: white;
             transform: translateY(-5px);
         }
@@ -261,28 +320,28 @@
             flex-wrap: wrap;
         }
         .btn-danger {
-            background: #e53e3e;
+            background: var(--danger);
         }
         .btn-danger:hover {
-            background: #c53030;
+            background: var(--danger-hover);
         }
         .status {
-            background: #edf2f7;
+            background: var(--surface-accent);
             padding: 10px 15px;
             border-radius: 8px;
             margin-top: 10px;
             font-size: 14px;
-            color: #4a5568;
+            color: var(--text-muted);
         }
         .results {
-            background: #f0fff4;
-            border: 2px solid #48bb78;
+            background: var(--success-bg);
+            border: 2px solid var(--success);
             padding: 15px;
             border-radius: 8px;
             margin-top: 15px;
         }
         .results h3 {
-            color: #22543d;
+            color: var(--results-text);
             margin-bottom: 10px;
         }
         .results-stats {
@@ -291,18 +350,18 @@
             flex-wrap: wrap;
         }
         .stat {
-            background: white;
+            background: var(--surface);
             padding: 10px 15px;
             border-radius: 6px;
         }
         .stat-label {
             font-size: 12px;
-            color: #718096;
+            color: var(--text-subtle);
         }
         .stat-value {
             font-size: 20px;
             font-weight: bold;
-            color: #22543d;
+            color: var(--results-text);
         }
         .hidden {
             display: none;
@@ -313,6 +372,9 @@
     <div class="container">
         <div class="header">
             <h1>🃏 P2P PP - Planning Poker</h1>
+            <div class="header-actions">
+                <button id="themeToggleBtn" onclick="toggleTheme()" aria-pressed="false">Dark mode</button>
+            </div>
             <div class="session-info">
                 <div class="info-box">
                     <label>Your Name</label>
@@ -330,7 +392,7 @@
         </div>
 
         <div id="joinSection" class="join-section">
-            <h2 style="margin-bottom: 20px; color: #2d3748;">Start or Join a Room</h2>
+            <h2 style="margin-bottom: 20px; color: var(--text);">Start or Join a Room</h2>
             <div style="margin-bottom: 20px;">
                 <input type="text" id="nameInput" placeholder="Your name" onkeypress="handleEnter(event, 'create')" />
                 <button onclick="createSession()">Create Room</button>
@@ -381,6 +443,52 @@
         let revealed = false;
         let roomId = null;
 
+        // Theme handling
+        function applyTheme(theme) {
+            const isDark = theme === 'dark';
+            document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+            const btn = document.getElementById('themeToggleBtn');
+            if (btn) {
+                btn.textContent = isDark ? 'Light mode' : 'Dark mode';
+                btn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+            }
+        }
+
+        function initTheme() {
+            const stored = localStorage.getItem('theme');
+            const mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+            function applySystemPreference() {
+                // Only follow system if user has not chosen a theme explicitly
+                if (!localStorage.getItem('theme')) {
+                    const isDark = mql && mql.matches;
+                    applyTheme(isDark ? 'dark' : 'light');
+                }
+            }
+
+            if (stored) {
+                applyTheme(stored);
+            } else {
+                const prefersDark = mql && mql.matches;
+                applyTheme(prefersDark ? 'dark' : 'light');
+                // Listen to changes in system theme and update automatically when no user preference
+                if (mql) {
+                    if (typeof mql.addEventListener === 'function') {
+                        mql.addEventListener('change', applySystemPreference);
+                    } else if (typeof mql.addListener === 'function') {
+                        mql.addListener(applySystemPreference);
+                    }
+                }
+            }
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+            const next = current === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('theme', next);
+            applyTheme(next);
+        }
+
         // Generate short room ID (6 characters)
         function generateRoomId() {
             return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -388,6 +496,7 @@
 
         // Check URL for room ID on page load
         window.addEventListener('DOMContentLoaded', () => {
+            initTheme();
             const urlParams = new URLSearchParams(window.location.search);
             const urlRoomId = urlParams.get('room');
             
@@ -398,7 +507,7 @@
                 // Hide create room option, show only join
                 const joinSection = document.getElementById('joinSection');
                 joinSection.innerHTML = `
-                    <h2 style="margin-bottom: 20px; color: #2d3748;">Join Room: ${urlRoomId}</h2>
+                    <h2 style="margin-bottom: 20px; color: var(--text);">Join Room: ${urlRoomId}</h2>
                     <div>
                         <input type="text" id="nameInputDirect" placeholder="Your name" onkeypress="handleEnter(event, 'direct', '${urlRoomId}')" />
                         <button onclick="joinSessionDirect('${urlRoomId}')">Join Room</button>
@@ -471,11 +580,12 @@
                 window.history.pushState({}, '', '?room=' + roomId);
                 
                 document.getElementById('joinSection').innerHTML = `
-                    <h2 style="margin-bottom: 15px; color: #2d3748;">Room Created!</h2>
-                    <p style="margin-bottom: 15px; color: #4a5568;">Share this URL with your team:</p>
-                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #e2e8f0;">
+                    <h2 style="margin-bottom: 15px; color: var(--text);">Room Created!</h2>
+                    <p style="margin-bottom: 15px; color: var(--text-muted);">Share this URL with your team:</p>
+                    <div class="share-box">
                         <input type="text" value="${shareUrl}" readonly 
-                               style="width: 100%; background: white;" 
+                               class="full-width" 
+                               style="background: var(--surface); color: var(--text);" 
                                onclick="this.select()" />
                     </div>
                     <button onclick="copyShareUrl('${shareUrl}')">Copy Link</button>
