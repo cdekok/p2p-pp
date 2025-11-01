@@ -485,6 +485,9 @@
             <div class="connecting-box">
                 <div class="spinner"></div>
                 <p id="connectingText">Connecting...</p>
+                <div style="margin-top: 12px;">
+                    <button id="cancelReconnectBtn" class="btn-secondary" style="display: none;" onclick="cancelReconnect()">Cancel</button>
+                </div>
             </div>
         </div>
 
@@ -584,6 +587,16 @@
             }
         }
 
+        function cancelReconnect() {
+            // User cancels any ongoing reconnect attempts
+            shouldAutoReconnect = false;
+            stopReconnectLoop();
+            try { if (peer) { peer.destroy(); } } catch {}
+            hideConnecting();
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) statusEl.textContent = 'Reconnect canceled';
+        }
+
         function startHostWithRetry(fixedRoomId, hostName, attempts = 12, onDone = () => {}) {
             if (!shouldAutoReconnect) {
                 console.log('Auto-reconnect disabled (startHostWithRetry entry).');
@@ -676,7 +689,7 @@
                     onDone();
                     return;
                 }
-                showConnecting('Reconnecting to Host...');
+                showConnecting('Reconnecting to Host...', true);
                 document.getElementById('connectionStatus').textContent = 'Reconnecting...';
 
                 try { if (peer) { try { peer.destroy(); } catch(e){} } } catch(e){}
@@ -736,7 +749,7 @@
                     return;
                 }
                 const nextN = n + 1;
-                const delay = Math.min(baseDelay * Math.pow(1.5, n), maxDelay);
+                const delay = 3000; // fixed 3s polling interval
                 reconnectTimer = setTimeout(() => attempt(nextN), delay);
             }
 
@@ -814,18 +827,15 @@
                 if (nameJoin) nameJoin.value = storedNameOnly;
             }
 
-            // Attempt to auto-resume previous session if available
+            // Attempt to auto-resume previous session only if URL explicitly has a room param
             const storedRole = localStorage.getItem('pp_role');
             const storedName = localStorage.getItem('pp_name');
             const storedRoom = localStorage.getItem('pp_room');
 
-            if (storedRole && storedName && storedRoom) {
-                // If URL doesn't have the room, add it for share consistency
-                if (!urlRoomId) {
-                    window.history.replaceState({}, '', '?room=' + storedRoom);
-                    document.getElementById('sessionIdInput').value = storedRoom;
-                    document.getElementById('sessionId').textContent = storedRoom;
-                }
+            if (urlRoomId && storedRole && storedName && storedRoom && storedRoom === urlRoomId) {
+                // Pre-fill inputs/labels with the URL room
+                document.getElementById('sessionIdInput').value = urlRoomId;
+                document.getElementById('sessionId').textContent = urlRoomId;
 
                 autoResuming = true;
                 if (storedRole === 'host') {
@@ -835,7 +845,7 @@
                     roomId = storedRoom;
                     document.getElementById('yourName').textContent = myName;
                     document.getElementById('connectionStatus').textContent = 'Reconnecting as Host...';
-                    showConnecting('Reconnecting as Host...');
+                    showConnecting('Reconnecting as Host...', true);
                     startHostWithRetry(roomId, myName, 12, () => {
                         autoResuming = false;
                         hideConnecting();
@@ -846,7 +856,7 @@
                     roomId = storedRoom;
                     document.getElementById('yourName').textContent = myName;
                     document.getElementById('connectionStatus').textContent = 'Reconnecting...';
-                    showConnecting('Reconnecting to Host...');
+                    showConnecting('Reconnecting to Host...', true);
                     autoJoinClient(roomId, myName, () => {
                         autoResuming = false;
                         hideConnecting();
@@ -868,9 +878,14 @@
             }
         }
 
-        function showConnecting(text = 'Connecting...') {
+        function showConnecting(text = 'Connecting...', allowCancel = false) {
             document.getElementById('connectingText').textContent = text;
-            document.getElementById('connectingOverlay').classList.remove('hidden');
+            const overlay = document.getElementById('connectingOverlay');
+            overlay.classList.remove('hidden');
+            const btn = document.getElementById('cancelReconnectBtn');
+            if (btn) {
+                btn.style.display = allowCancel ? 'inline-block' : 'none';
+            }
         }
 
         function hideConnecting() {
@@ -1020,7 +1035,7 @@
                     return;
                 }
                 // Try to regain the same room id automatically
-                showConnecting('Reconnecting as Host...');
+                showConnecting('Reconnecting as Host...', true);
                 startHostWithRetry(roomId, myName, 12, () => {
                     hideConnecting();
                 });
@@ -1133,8 +1148,9 @@
                     console.log('Auto-reconnect disabled (client). Not retrying.');
                     return;
                 }
-                showConnecting('Reconnecting to Host...');
-                autoJoinClient(roomId, myName);
+                showConnecting('Reconnecting to Host...', true);
+                // Enforce 3s polling interval before attempting reconnect
+                reconnectTimer = setTimeout(() => autoJoinClient(roomId, myName), 3000);
             });
         }
 
@@ -1157,8 +1173,9 @@
                         return;
                     }
                     console.log('Disconnected from host. Attempting to reconnect...');
-                    showConnecting('Reconnecting to Host...');
-                    autoJoinClient(roomId, myName);
+                    showConnecting('Reconnecting to Host...', true);
+                    // Enforce 3s polling interval before attempting reconnect
+                    reconnectTimer = setTimeout(() => autoJoinClient(roomId, myName), 3000);
                 }
             });
             
