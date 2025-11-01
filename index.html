@@ -527,7 +527,7 @@
         function clearSession() {
             try {
                 localStorage.removeItem('pp_role');
-                localStorage.removeItem('pp_name');
+                // Keep pp_name so the user's name remains prefilled across sessions
                 localStorage.removeItem('pp_room');
             } catch {}
         }
@@ -753,6 +753,15 @@
                 document.getElementById('sessionId').textContent = urlRoomId;
             }
 
+            // Prefill name inputs from previous usage (if available)
+            const storedNameOnly = localStorage.getItem('pp_name');
+            if (storedNameOnly) {
+                const nameCreate = document.getElementById('nameInput');
+                const nameJoin = document.getElementById('nameInputJoin');
+                if (nameCreate) nameCreate.value = storedNameOnly;
+                if (nameJoin) nameJoin.value = storedNameOnly;
+            }
+
             // Attempt to auto-resume previous session if available
             const storedRole = localStorage.getItem('pp_role');
             const storedName = localStorage.getItem('pp_name');
@@ -824,6 +833,9 @@
                 alert('Please enter your name');
                 return;
             }
+            
+            // Persist the entered name so it can be prefilled next time
+            try { localStorage.setItem('pp_name', name); } catch {}
             
             myName = name;
             isHost = true;
@@ -923,6 +935,9 @@
                 alert('Please enter your name and room ID');
                 return;
             }
+            
+            // Persist the entered name so it can be prefilled next time
+            try { localStorage.setItem('pp_name', name); } catch {}
             
             joinSessionDirect(sessionId, name);
         }
@@ -1266,6 +1281,8 @@
             hideConnecting();
             // Capture the last room ID so we can prefill the Join form
             const lastRoomId = roomId;
+            // Retrieve stored name to prefill both name inputs
+            const storedNameOnly = localStorage.getItem('pp_name');
 
             // Clear state
             peer = null;
@@ -1288,14 +1305,14 @@
                     <div class=\"auth-card\">
                         <h3>Start a room</h3>
                         <div class=\"row\">
-                            <input type=\"text\" id=\"nameInput\" placeholder=\"Your name\" onkeypress=\"handleEnter(event, 'create')\" />
+                            <input type=\"text\" id=\"nameInput\" placeholder=\"Your name\" value=\"${storedNameOnly ? storedNameOnly : ''}\" onkeypress=\"handleEnter(event, 'create')\" />
                             <button onclick=\"createSession()\">Create Room</button>
                         </div>
                     </div>
                     <div class=\"auth-card\">
                         <h3>Join a room</h3>
                         <div class=\"row\">
-                            <input type=\"text\" id=\"nameInputJoin\" placeholder=\"Your name\" onkeypress=\"handleEnter(event, 'join')\" />
+                            <input type=\"text\" id=\"nameInputJoin\" placeholder=\"Your name\" value=\"${storedNameOnly ? storedNameOnly : ''}\" onkeypress=\"handleEnter(event, 'join')\" />
                             <input type=\"text\" id=\"sessionIdInput\" placeholder=\"Room ID\" value=\"${lastRoomId ? lastRoomId : ''}\" onkeypress=\"handleEnter(event, 'join')\" />
                             <button onclick=\"joinSession()\">Join Room</button>
                         </div>
