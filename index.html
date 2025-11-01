@@ -183,6 +183,35 @@
             margin-bottom: 20px;
             box-shadow: 0 4px 6px var(--shadow-color);
         }
+        /* Start/Join horizontal blocks */
+        .auth-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 20px;
+        }
+        @media (max-width: 700px) {
+            .auth-grid { grid-template-columns: 1fr; }
+        }
+        .auth-card {
+            background: var(--surface-muted);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 4px var(--shadow-color);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+        }
+        .auth-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 6px 14px var(--shadow-color);
+            transform: translateY(-2px);
+        }
+        .auth-card h3 {
+            margin-bottom: 12px;
+            color: var(--text);
+            font-size: 18px;
+        }
+        .auth-card .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+        .auth-card .row + .row { margin-top: 10px; }
         input {
             padding: 10px;
             border: 2px solid var(--border);
@@ -400,15 +429,22 @@
         </div>
 
         <div id="joinSection" class="join-section">
-            <h2 style="margin-bottom: 20px; color: var(--text);">Start or Join a Room</h2>
-            <div style="margin-bottom: 20px;">
-                <input type="text" id="nameInput" placeholder="Your name" onkeypress="handleEnter(event, 'create')" />
-                <button onclick="createSession()">Create Room</button>
-            </div>
-            <div>
-                <input type="text" id="nameInputJoin" placeholder="Your name" onkeypress="handleEnter(event, 'join')" />
-                <input type="text" id="sessionIdInput" placeholder="Room ID" onkeypress="handleEnter(event, 'join')" />
-                <button onclick="joinSession()">Join Room</button>
+            <div class="auth-grid">
+                <div class="auth-card">
+                    <h3>Start a room</h3>
+                    <div class="row">
+                        <input type="text" id="nameInput" placeholder="Your name" onkeypress="handleEnter(event, 'create')" />
+                        <button onclick="createSession()">Create Room</button>
+                    </div>
+                </div>
+                <div class="auth-card">
+                    <h3>Join a room</h3>
+                    <div class="row">
+                        <input type="text" id="nameInputJoin" placeholder="Your name" onkeypress="handleEnter(event, 'join')" />
+                        <input type="text" id="sessionIdInput" placeholder="Room ID" onkeypress="handleEnter(event, 'join')" />
+                        <button onclick="joinSession()">Join Room</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -450,6 +486,210 @@
         let isHost = false;
         let revealed = false;
         let roomId = null;
+        let reconnectTimer = null;
+        let autoResuming = false;
+        let shouldAutoReconnect = true;
+
+        // PeerJS configuration and factory
+        // Override by defining window.P2P_CONFIG = { stunUrls: ['stun:example.org:3478', ...] } before this script runs
+        const __P2P_APP_CONFIG = (typeof window !== 'undefined' && window.P2P_CONFIG) ? window.P2P_CONFIG : {};
+        const __DEFAULT_STUN_URLS = [
+            'stun:stun.l.google.com:19302',
+            'stun:stun1.l.google.com:19302',
+            'stun:stun2.l.google.com:19302',
+            'stun:stun.cloudflare.com:3478'
+        ];
+        const __STUN_URLS = Array.isArray(__P2P_APP_CONFIG.stunUrls) && __P2P_APP_CONFIG.stunUrls.length
+            ? __P2P_APP_CONFIG.stunUrls
+            : __DEFAULT_STUN_URLS;
+        function __buildIceServers(urls) {
+            return urls.map(u => typeof u === 'string' ? { urls: u } : u);
+        }
+        function createPeer(peerId) {
+            return new Peer(peerId, {
+                debug: 2,
+                config: {
+                    iceServers: __buildIceServers(__STUN_URLS),
+                    iceTransportPolicy: 'all',
+                    iceCandidatePoolSize: 10
+                }
+            });
+        }
+
+        // Simple session persistence for auto-resume across refresh
+        function saveSession(role, name, room) {
+            try {
+                localStorage.setItem('pp_role', role);
+                localStorage.setItem('pp_name', name);
+                localStorage.setItem('pp_room', room);
+            } catch {}
+        }
+        function clearSession() {
+            try {
+                localStorage.removeItem('pp_role');
+                localStorage.removeItem('pp_name');
+                localStorage.removeItem('pp_room');
+            } catch {}
+        }
+
+        function stopReconnectLoop() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+        }
+
+        function startHostWithRetry(fixedRoomId, hostName, attempts = 12, onDone = () => {}) {
+            if (!shouldAutoReconnect) {
+                console.log('Auto-reconnect disabled (startHostWithRetry entry).');
+                onDone();
+                return;
+            }
+            if (attempts <= 0) {
+                document.getElementById('connectionStatus').textContent = 'Reconnect failed';
+                onDone();
+                return;
+            }
+
+            myName = hostName;
+            isHost = true;
+            roomId = fixedRoomId;
+
+            showConnecting('Creating room...');
+            document.getElementById('connectionStatus').textContent = 'Connecting...';
+
+            try { if (peer) { try { peer.destroy(); } catch(e){} } } catch(e){}
+            participants = {};
+            connections = [];
+            revealed = false;
+            myVote = null;
+
+            peer = createPeer(fixedRoomId);
+
+            peer.on('open', (id) => {
+                hideConnecting();
+                document.getElementById('sessionId').textContent = roomId;
+                document.getElementById('yourName').textContent = myName;
+                document.getElementById('connectionStatus').textContent = 'Connected (Host)';
+                saveSession('host', myName, roomId);
+
+                const baseUrl = window.location.origin + window.location.pathname;
+                const shareUrl = baseUrl + '?room=' + roomId;
+                window.history.pushState({}, '', '?room=' + roomId);
+
+                // If we are coming from auto resume, keep the join section as-is but still reveal the game
+                document.getElementById('joinSection').classList.add('hidden');
+                document.getElementById('gameSection').classList.remove('hidden');
+
+                participants[id] = { name: myName, vote: null, peerId: id };
+                updateParticipants();
+                setupCards();
+                document.getElementById('closeBtn').style.display = 'inline-block';
+                onDone();
+            });
+
+            peer.on('connection', (conn) => {
+                connections.push(conn);
+                setupConnection(conn);
+            });
+
+            peer.on('error', (err) => {
+                console.error('Peer error (host retry):', err);
+                if (err.type === 'unavailable-id') {
+                    // Wait and retry — previous peer might still be cleaning up on the server
+                    const delay = 1000;
+                    reconnectTimer = setTimeout(() => startHostWithRetry(fixedRoomId, hostName, attempts - 1, onDone), delay);
+                } else {
+                    // Other errors: try again with backoff
+                    const delay = 1500;
+                    reconnectTimer = setTimeout(() => startHostWithRetry(fixedRoomId, hostName, attempts - 1, onDone), delay);
+                }
+            });
+
+            peer.on('disconnected', () => {
+                console.log('Peer disconnected (host), retrying...');
+                const delay = 1000;
+                reconnectTimer = setTimeout(() => startHostWithRetry(fixedRoomId, hostName, attempts - 1, onDone), delay);
+            });
+        }
+
+        function autoJoinClient(targetRoomId, clientName, onDone = () => {}, attempts = 0) {
+            if (!shouldAutoReconnect) {
+                console.log('Auto-reconnect disabled (autoJoinClient entry).');
+                onDone();
+                return;
+            }
+            // attempts: 0 = infinite retries with backoff (cap), >0 = remaining attempts
+            const maxDelay = 4000;
+            const baseDelay = 800;
+
+            function attempt(n) {
+                if (!shouldAutoReconnect) {
+                    console.log('Auto-reconnect disabled (autoJoinClient.attempt).');
+                    onDone();
+                    return;
+                }
+                showConnecting('Reconnecting to Host...');
+                document.getElementById('connectionStatus').textContent = 'Reconnecting...';
+
+                try { if (peer) { try { peer.destroy(); } catch(e){} } } catch(e){}
+                connections = [];
+
+                peer = createPeer(undefined);
+
+                peer.on('open', (id) => {
+                    myName = clientName;
+                    isHost = false;
+                    roomId = targetRoomId;
+                    document.getElementById('yourName').textContent = myName;
+                    document.getElementById('sessionId').textContent = targetRoomId;
+
+                    const conn = peer.connect(targetRoomId);
+                    connections.push(conn);
+                    setupConnection(conn);
+                    setupCards();
+
+                    conn.on('open', () => {
+                        hideConnecting();
+                        document.getElementById('connectionStatus').textContent = 'Connected';
+                        document.getElementById('joinSection').classList.add('hidden');
+                        document.getElementById('gameSection').classList.remove('hidden');
+                        saveSession('client', myName, roomId);
+                        conn.send({ type: 'join', name: myName, peerId: id });
+                        stopReconnectLoop();
+                        onDone();
+                    });
+
+                    conn.on('error', (err) => {
+                        console.error('Connection error (auto-join):', err);
+                        scheduleNext(n);
+                    });
+                });
+
+                peer.on('error', (err) => {
+                    console.error('Peer error (auto-join):', err);
+                    scheduleNext(n);
+                });
+
+                peer.on('disconnected', () => {
+                    console.log('Peer disconnected (client), retrying...');
+                    scheduleNext(n);
+                });
+            }
+
+            function scheduleNext(n) {
+                if (!shouldAutoReconnect) {
+                    console.log('Auto-reconnect disabled (autoJoinClient.scheduleNext).');
+                    onDone();
+                    return;
+                }
+                const nextN = n + 1;
+                const delay = Math.min(baseDelay * Math.pow(1.5, n), maxDelay);
+                reconnectTimer = setTimeout(() => attempt(nextN), delay);
+            }
+
+            attempt(0);
+        }
 
         // Theme handling
         function applyTheme(theme) {
@@ -502,25 +742,55 @@
             return Math.random().toString(36).substring(2, 8).toUpperCase();
         }
 
-        // Check URL for room ID on page load
+        // Auto-resume logic on load
         window.addEventListener('DOMContentLoaded', () => {
             initTheme();
             const urlParams = new URLSearchParams(window.location.search);
             const urlRoomId = urlParams.get('room');
-            
+
             if (urlRoomId) {
                 document.getElementById('sessionIdInput').value = urlRoomId;
                 document.getElementById('sessionId').textContent = urlRoomId;
-                
-                // Hide create room option, show only join
-                const joinSection = document.getElementById('joinSection');
-                joinSection.innerHTML = `
-                    <h2 style="margin-bottom: 20px; color: var(--text);">Join Room: ${urlRoomId}</h2>
-                    <div>
-                        <input type="text" id="nameInputDirect" placeholder="Your name" onkeypress="handleEnter(event, 'direct', '${urlRoomId}')" />
-                        <button onclick="joinSessionDirect('${urlRoomId}')">Join Room</button>
-                    </div>
-                `;
+            }
+
+            // Attempt to auto-resume previous session if available
+            const storedRole = localStorage.getItem('pp_role');
+            const storedName = localStorage.getItem('pp_name');
+            const storedRoom = localStorage.getItem('pp_room');
+
+            if (storedRole && storedName && storedRoom) {
+                // If URL doesn't have the room, add it for share consistency
+                if (!urlRoomId) {
+                    window.history.replaceState({}, '', '?room=' + storedRoom);
+                    document.getElementById('sessionIdInput').value = storedRoom;
+                    document.getElementById('sessionId').textContent = storedRoom;
+                }
+
+                autoResuming = true;
+                if (storedRole === 'host') {
+                    // Resume hosting this room ID
+                    myName = storedName;
+                    isHost = true;
+                    roomId = storedRoom;
+                    document.getElementById('yourName').textContent = myName;
+                    document.getElementById('connectionStatus').textContent = 'Reconnecting as Host...';
+                    showConnecting('Reconnecting as Host...');
+                    startHostWithRetry(roomId, myName, 12, () => {
+                        autoResuming = false;
+                        hideConnecting();
+                    });
+                } else if (storedRole === 'client') {
+                    myName = storedName;
+                    isHost = false;
+                    roomId = storedRoom;
+                    document.getElementById('yourName').textContent = myName;
+                    document.getElementById('connectionStatus').textContent = 'Reconnecting...';
+                    showConnecting('Reconnecting to Host...');
+                    autoJoinClient(roomId, myName, () => {
+                        autoResuming = false;
+                        hideConnecting();
+                    });
+                }
             }
         });
 
@@ -547,6 +817,8 @@
         }
 
         function createSession() {
+            // User explicitly starts a new session: enable auto-reconnect again
+            shouldAutoReconnect = true;
             const name = document.getElementById('nameInput').value.trim();
             if (!name) {
                 alert('Please enter your name');
@@ -560,20 +832,8 @@
             showConnecting('Creating room...');
             document.getElementById('connectionStatus').textContent = 'Connecting...';
             
-            // Use custom short ID as peer ID with faster STUN servers
-            peer = new Peer(roomId, {
-                debug: 2,
-                config: {
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
-                        { urls: 'stun:stun.cloudflare.com:3478' }
-                    ],
-                    iceTransportPolicy: 'all',
-                    iceCandidatePoolSize: 10
-                }
-            });
+            // Create Peer via factory (configurable STUN URLs)
+            peer = createPeer(roomId);
             
             peer.on('open', (id) => {
                 console.log('Peer opened with ID:', id);
@@ -581,6 +841,9 @@
                 document.getElementById('sessionId').textContent = roomId;
                 document.getElementById('yourName').textContent = myName;
                 document.getElementById('connectionStatus').textContent = 'Connected (Host)';
+
+                // Persist session for auto-resume
+                saveSession('host', myName, roomId);
                 
                 // Update URL with room ID
                 const baseUrl = window.location.origin + window.location.pathname;
@@ -631,14 +894,22 @@
             });
             
             peer.on('disconnected', () => {
-                console.log('Peer disconnected');
-                document.getElementById('connectionStatus').textContent = 'Disconnected';
+                console.log('Peer disconnected (host)');
+                if (!shouldAutoReconnect) {
+                    console.log('Auto-reconnect disabled (host). Not retrying.');
+                    return;
+                }
+                // Try to regain the same room id automatically
+                showConnecting('Reconnecting as Host...');
+                startHostWithRetry(roomId, myName, 12, () => {
+                    hideConnecting();
+                });
             });
         }
 
         function copyShareUrl(url) {
             navigator.clipboard.writeText(url).then(() => {
-                alert('Link copied to clipboard!');
+                console.log('Link copied to clipboard!');
             }).catch(() => {
                 alert('Failed to copy. Please copy manually.');
             });
@@ -657,6 +928,8 @@
         }
 
         function joinSessionDirect(sessionId, name = null) {
+            // User explicitly starts a new session: enable auto-reconnect again
+            shouldAutoReconnect = true;
             if (!name) {
                 name = document.getElementById('nameInputDirect').value.trim();
             }
@@ -673,20 +946,8 @@
             showConnecting('Joining room...');
             document.getElementById('connectionStatus').textContent = 'Connecting...';
             
-            // Use PeerJS with faster STUN servers
-            peer = new Peer(undefined, {
-                debug: 2,
-                config: {
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
-                        { urls: 'stun:stun.cloudflare.com:3478' }
-                    ],
-                    iceTransportPolicy: 'all',
-                    iceCandidatePoolSize: 10
-                }
-            });
+            // Create Peer via factory (configurable STUN URLs)
+            peer = createPeer(undefined);
             
             peer.on('open', (id) => {
                 console.log('Peer opened with ID:', id);
@@ -704,6 +965,7 @@
                     document.getElementById('connectionStatus').textContent = 'Connected';
                     document.getElementById('joinSection').classList.add('hidden');
                     document.getElementById('gameSection').classList.remove('hidden');
+                    saveSession('client', myName, roomId);
                     
                     conn.send({
                         type: 'join',
@@ -727,8 +989,13 @@
             });
             
             peer.on('disconnected', () => {
-                console.log('Peer disconnected');
-                document.getElementById('connectionStatus').textContent = 'Disconnected';
+                console.log('Peer disconnected (client)');
+                if (!shouldAutoReconnect) {
+                    console.log('Auto-reconnect disabled (client). Not retrying.');
+                    return;
+                }
+                showConnecting('Reconnecting to Host...');
+                autoJoinClient(roomId, myName);
             });
         }
 
@@ -744,10 +1011,15 @@
                     updateParticipants();
                 }
                 
-                // If host disconnected, show error and redirect
+                // If our connection to the host closed, try to reconnect automatically
                 if (!isHost && conn.peer === roomId) {
-                    alert('The host has closed the room.');
-                    redirectToLogin('Room closed by host');
+                    if (!shouldAutoReconnect) {
+                        console.log('Auto-reconnect disabled (conn close). Not retrying.');
+                        return;
+                    }
+                    console.log('Disconnected from host. Attempting to reconnect...');
+                    showConnecting('Reconnecting to Host...');
+                    autoJoinClient(roomId, myName);
                 }
             });
             
@@ -814,7 +1086,10 @@
                     break;
                     
                 case 'room_closed':
-                    alert('The host has closed the room.');
+                    shouldAutoReconnect = false;
+                    stopReconnectLoop();
+                    clearSession();
+                    hideConnecting();
                     redirectToLogin('Room closed by host');
                     break;
             }
@@ -958,30 +1233,40 @@
         }
 
         function leaveRoom() {
-            if (confirm('Are you sure you want to leave this room?')) {
-                if (peer) {
-                    peer.destroy();
-                }
-                redirectToLogin('You left the room');
+            // Proceed without confirmation: no alerts/dialogs
+            shouldAutoReconnect = false;
+            stopReconnectLoop();
+            clearSession();
+            if (peer) {
+                try { peer.destroy(); } catch(e){}
             }
+            redirectToLogin('You left the room');
         }
 
         function closeRoom() {
             if (!isHost) return;
+            // Proceed without confirmation: no alerts/dialogs
+            shouldAutoReconnect = false;
+            broadcast({ type: 'room_closed' });
             
-            if (confirm('Are you sure you want to close this room? All participants will be disconnected.')) {
-                broadcast({ type: 'room_closed' });
-                
-                setTimeout(() => {
-                    if (peer) {
-                        peer.destroy();
-                    }
-                    redirectToLogin('Room closed');
-                }, 500);
-            }
+            setTimeout(() => {
+                stopReconnectLoop();
+                clearSession();
+                if (peer) {
+                    try { peer.destroy(); } catch(e){}
+                }
+                redirectToLogin('Room closed');
+            }, 500);
         }
 
         function redirectToLogin(message = '') {
+            // Disable any auto-reconnect attempts triggered by async events
+            shouldAutoReconnect = false;
+            // Ensure any connecting overlay is hidden
+            hideConnecting();
+            // Capture the last room ID so we can prefill the Join form
+            const lastRoomId = roomId;
+
             // Clear state
             peer = null;
             connections = [];
@@ -994,20 +1279,27 @@
             // Reset URL
             window.history.pushState({}, '', window.location.pathname);
             
-            // Show login screen
+            // Show login screen (offer both Create and Join like on the home page)
             document.getElementById('gameSection').classList.add('hidden');
             document.getElementById('joinSection').classList.remove('hidden');
             document.getElementById('joinSection').innerHTML = `
-                <h2 style="margin-bottom: 20px; color: #2d3748;">Start or Join a Room</h2>
-                ${message ? `<div style="background: #fed7d7; color: #c53030; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #fc8181;">${message}</div>` : ''}
-                <div style="margin-bottom: 20px;">
-                    <input type="text" id="nameInput" placeholder="Your name" onkeypress="handleEnter(event, 'create')" />
-                    <button onclick="createSession()">Create Room</button>
-                </div>
-                <div>
-                    <input type="text" id="nameInputJoin" placeholder="Your name" onkeypress="handleEnter(event, 'join')" />
-                    <input type="text" id="sessionIdInput" placeholder="Room ID" onkeypress="handleEnter(event, 'join')" />
-                    <button onclick="joinSession()">Join Room</button>
+                ${message ? `<div style=\"background: #fed7d7; color: #c53030; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #fc8181;\">${message}</div>` : ''}
+                <div class=\"auth-grid\">
+                    <div class=\"auth-card\">
+                        <h3>Start a room</h3>
+                        <div class=\"row\">
+                            <input type=\"text\" id=\"nameInput\" placeholder=\"Your name\" onkeypress=\"handleEnter(event, 'create')\" />
+                            <button onclick=\"createSession()\">Create Room</button>
+                        </div>
+                    </div>
+                    <div class=\"auth-card\">
+                        <h3>Join a room</h3>
+                        <div class=\"row\">
+                            <input type=\"text\" id=\"nameInputJoin\" placeholder=\"Your name\" onkeypress=\"handleEnter(event, 'join')\" />
+                            <input type=\"text\" id=\"sessionIdInput\" placeholder=\"Room ID\" value=\"${lastRoomId ? lastRoomId : ''}\" onkeypress=\"handleEnter(event, 'join')\" />
+                            <button onclick=\"joinSession()\">Join Room</button>
+                        </div>
+                    </div>
                 </div>
             `;
             
