@@ -509,7 +509,7 @@
                 <h2>Cast Your Vote</h2>
                 <div class="cards" id="cardContainer"></div>
                 <div class="controls">
-                    <button onclick="revealVotes()" id="revealBtn">Reveal Votes</button>
+                    <button onclick="revealVotes()" id="revealBtn" disabled>Reveal Votes</button>
                     <button onclick="resetVotes()">New Round</button>
                     <button onclick="leaveRoom()" class="btn-danger" id="leaveBtn">Leave Room</button>
                     <button onclick="closeRoom()" class="btn-danger" id="closeBtn" style="display: none;">Close Room</button>
@@ -1262,6 +1262,22 @@
                 card.appendChild(voteDiv);
                 grid.appendChild(card);
             }
+            // Update reveal button enabled state
+            updateRevealButtonState();
+        }
+
+        // Helpers to manage Reveal button availability
+        function getVoteCount() {
+            let count = 0;
+            for (let id in participants) {
+                if (participants[id] && participants[id].vote !== null) count++;
+            }
+            return count;
+        }
+        function updateRevealButtonState() {
+            const btn = document.getElementById('revealBtn');
+            if (!btn) return;
+            btn.disabled = getVoteCount() === 0;
         }
 
         function revealVotes() {
