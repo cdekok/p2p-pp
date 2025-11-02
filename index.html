@@ -587,15 +587,32 @@
         const __STUN_URLS = Array.isArray(__P2P_APP_CONFIG.stunUrls) && __P2P_APP_CONFIG.stunUrls.length
             ? __P2P_APP_CONFIG.stunUrls
             : __DEFAULT_STUN_URLS;
-        // Using Trystero Nostr provider default relays.
-        // Relay configuration has been removed to keep the setup backend-free and simple.
-        // If you ever need custom relays, you can reintroduce a small override that passes
-        // a `relays` array to `joinRoom`, but by default we rely on provider defaults.
+        // Nostr relays — use a robust default set, but allow override via window.P2P_CONFIG.relays
+        const __DEFAULT_RELAYS = [
+            'wss://relay.damus.io',
+            'wss://nos.lol',
+            'wss://nostr.wine',
+            'wss://relay.snort.social',
+            'wss://offchain.pub',
+            'wss://relay.current.fyi'
+        ];
+        const __RELAYS = Array.isArray(__P2P_APP_CONFIG.relays) && __P2P_APP_CONFIG.relays.length
+            ? __P2P_APP_CONFIG.relays
+            : __DEFAULT_RELAYS;
+        
         function __buildIceServers(urls) {
             return urls.map(u => typeof u === 'string' ? { urls: u } : u);
         }
         function buildRtcConfig() {
-            return { iceServers: __buildIceServers(__STUN_URLS), iceTransportPolicy: 'all' };
+            // Optionally include TURN servers if provided via config
+            // Accept either array of strings (urls) or full RTCIceServer objects
+            const turnList = (Array.isArray(__P2P_APP_CONFIG.turnServers) && __P2P_APP_CONFIG.turnServers.length)
+                ? __P2P_APP_CONFIG.turnServers
+                : (Array.isArray(__P2P_APP_CONFIG.turnUrls) && __P2P_APP_CONFIG.turnUrls.length)
+                    ? __P2P_APP_CONFIG.turnUrls
+                    : [];
+            const iceServers = __buildIceServers(__STUN_URLS).concat(__buildIceServers(turnList));
+            return { iceServers, iceTransportPolicy: 'all' };
         }
 
         // Simple session persistence for auto-resume across refresh
@@ -661,7 +678,7 @@
                 try {
                     const appId = __P2P_APP_CONFIG.appId || 'p2p-pp';
                     const rtcConfig = buildRtcConfig();
-                    const providerOpts = { appId };
+                    const providerOpts = { appId, relays: __RELAYS };
                     room = window.trysteroNostr.joinRoom(providerOpts, fixedRoomId, { rtcConfig });
                     const _act = room.makeAction('pp-msg');
                     const _send = _act[0];
@@ -988,7 +1005,7 @@
                 try {
                     const appId = __P2P_APP_CONFIG.appId || 'p2p-pp';
                     const rtcConfig = buildRtcConfig();
-                    const providerOpts = { appId };
+                    const providerOpts = { appId, relays: __RELAYS };
                     room = window.trysteroNostr.joinRoom(providerOpts, sessionId, { rtcConfig });
 
                     const _act = room.makeAction('pp-msg');
