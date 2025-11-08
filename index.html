@@ -4,1420 +4,589 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>P2P Planning Poker</title>
-    <!-- Trystero Nostr provider (ESM via CDN, pinned) -->
-    <script type="module">
-        import { joinRoom } from 'https://esm.sh/trystero@0.21.0/nostr';
-        // Expose minimal global shim to match previous usage
-        window.trysteroNostr = { joinRoom };
-    </script>
-    <style>
-        :root {
-            --bg-gradient-start: #667eea;
-            --bg-gradient-end: #764ba2;
-            --surface: #ffffff;
-            --surface-muted: #f7fafc;
-            --surface-accent: #edf2f7;
-            --text: #2d3748;
-            --text-muted: #4a5568;
-            --text-subtle: #718096;
-            --primary: #667eea;
-            --primary-hover: #5568d3;
-            --border: #e2e8f0;
-            --success: #48bb78;
-            --success-bg: #f0fff4;
-            --danger: #e53e3e;
-            --danger-hover: #c53030;
-            --results-text: #22543d;
-            --shadow-color: rgba(0,0,0,0.1);
-            --overlay: rgba(0,0,0,0.5);
-        }
-        [data-theme="dark"] {
-            --bg-gradient-start: #0f172a;
-            --bg-gradient-end: #1f2937;
-            --surface: #111827;
-            --surface-muted: #0b1220;
-            --surface-accent: #1f2937;
-            --text: #e5e7eb;
-            --text-muted: #cbd5e1;
-            --text-subtle: #94a3b8;
-            --primary: #8b5cf6;
-            --primary-hover: #7c3aed;
-            --border: #334155;
-            --success: #22c55e;
-            --success-bg: #052e1b;
-            --danger: #ef4444;
-            --danger-hover: #dc2626;
-            --results-text: #86efac;
-            --shadow-color: rgba(0,0,0,0.5);
-            --overlay: rgba(0, 0, 0, 0.6);
-        }
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: var(--text);
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .header {
-            background: var(--surface);
-            padding: 20px;
-            padding-right: 160px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px var(--shadow-color);
-            position: relative;
-        }
-        h1 {
-            color: var(--primary);
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        h2, h3 {
-            color: var(--text);
-        }
-        .share-box {
-            background: var(--surface-muted);
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            border: 2px solid var(--border);
-        }
-        .full-width { width: 100%; }
-        .header .header-actions { position: absolute; top: 20px; right: 20px; margin-top: 0; display: flex; gap: 10px; flex-wrap: wrap; }
-        .spinner {
-            border: 3px solid var(--surface-accent);
-            border-top: 3px solid var(--primary);
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .connecting-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: var(--overlay);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-        .connecting-box {
-            background: var(--surface);
-            padding: 30px 40px;
-            border-radius: 12px;
-            text-align: center;
-            box-shadow: 0 10px 25px var(--shadow-color);
-        }
-        .connecting-box .spinner {
-            width: 40px;
-            height: 40px;
-            border-width: 4px;
-            margin-bottom: 15px;
-        }
-        .connecting-box p {
-            color: var(--text-muted);
-            font-size: 16px;
-            font-weight: 500;
-        }
-        .session-info {
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        .info-box {
-            background: var(--surface-muted);
-            padding: 10px 15px;
-            border-radius: 8px;
-            border: 2px solid var(--border);
-        }
-        .info-box label {
-            font-size: 12px;
-            color: var(--text-subtle);
-            display: block;
-            margin-bottom: 3px;
-        }
-        .info-box span {
-            font-weight: bold;
-            color: var(--text);
-            font-size: 14px;
-        }
-        button {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        button:hover {
-            background: var(--primary-hover);
-            transform: translateY(-1px);
-        }
-        button:disabled {
-            background: var(--border);
-            cursor: not-allowed;
-            transform: none;
-        }
-        .join-section {
-            background: var(--surface);
-            padding: 30px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px var(--shadow-color);
-        }
-        /* Start/Join horizontal blocks */
-        .auth-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 20px;
-        }
-        @media (max-width: 700px) {
-            .auth-grid { grid-template-columns: 1fr; }
-        }
-        .auth-card {
-            background: var(--surface-muted);
-            border: 2px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 2px 4px var(--shadow-color);
-            transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
-        }
-        .auth-card:hover {
-            border-color: var(--primary);
-            box-shadow: 0 6px 14px var(--shadow-color);
-            transform: translateY(-2px);
-        }
-        .auth-card h3 {
-            margin-bottom: 12px;
-            color: var(--text);
-            font-size: 18px;
-        }
-        .auth-card .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-        .auth-card .row + .row { margin-top: 10px; }
-        input {
-            padding: 10px;
-            border: 2px solid var(--border);
-            border-radius: 8px;
-            font-size: 14px;
-            width: 250px;
-            margin-right: 10px;
-            background: var(--surface);
-            color: var(--text);
-        }
-        input:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-        .participants {
-            background: var(--surface);
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px var(--shadow-color);
-        }
-        .participants h2 {
-            color: var(--text);
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-        .participant-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 15px;
-        }
-        .participant-card.voted {
-            border-color: var(--success);
-            background: var(--success-bg);
-        }
-        .participant-card.voted::after {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            background: var(--success);
-            color: white;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 16px;
-        }
-        .participant-card {
-            background: var(--surface-muted);
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            border: 2px solid var(--border);
-            transition: all 0.3s;
-            position: relative;
-            min-height: 120px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-        .participant-card.revealed {
-            border-color: var(--primary);
-        }
-        /* Ensure voted state keeps success border even if also revealed */
-        .participant-card.voted.revealed {
-            border-color: var(--success);
-        }
-        .participant-name {
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 8px;
-            min-height: 20px;
-        }
-        .participant-vote {
-            font-size: 24px;
-            font-weight: bold;
-            color: var(--primary);
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            line-height: 36px;
-        }
-        .participant-vote.voted {
-            color: var(--success);
-        }
-        /* In dark theme, show revealed vote numbers using the same green as .stat-value */
-        [data-theme="dark"] .participant-card.revealed .participant-vote {
-            color: var(--results-text);
-        }
-        .voting-section {
-            background: var(--surface);
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px var(--shadow-color);
-        }
-        .voting-section h2 {
-            color: var(--text);
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-        .cards {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 15px;
-        }
-        .card {
-            width: 60px;
-            height: 80px;
-            background: var(--surface);
-            border: 3px solid var(--primary);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            font-weight: bold;
-            color: var(--primary);
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
-        }
-        [data-theme="dark"] .card:hover {
-            box-shadow: 0 6px 12px rgba(139, 92, 246, 0.25);
-        }
-        .card.selected {
-            background: var(--primary);
-            color: white;
-            transform: translateY(-5px);
-        }
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-            flex-wrap: wrap;
-        }
-        .btn-danger {
-            background: var(--danger);
-        }
-        .btn-danger:hover {
-            background: var(--danger-hover);
-        }
-        .status {
-            background: var(--surface-accent);
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin-top: 10px;
-            font-size: 14px;
-            color: var(--text-muted);
-        }
-        .results {
-            background: var(--success-bg);
-            border: 2px solid var(--success);
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-        }
-        .results h3 {
-            color: var(--results-text);
-            margin-bottom: 10px;
-        }
-        .results-stats {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        .stat {
-            background: var(--surface);
-            padding: 10px 15px;
-            border-radius: 6px;
-        }
-        .stat-label {
-            font-size: 12px;
-            color: var(--text-subtle);
-        }
-        .stat-value {
-            font-size: 20px;
-            font-weight: bold;
-            color: var(--results-text);
-        }
-        .hidden {
-            display: none;
-        }
-        /* Simple modal */
-        .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: var(--overlay);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1001;
-        }
-        /* Ensure hidden takes precedence over modal default display */
-        .modal-overlay.hidden {
-            display: none;
-        }
-        .modal-box {
-            background: var(--surface);
-            padding: 24px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px var(--shadow-color);
-            max-width: 420px;
-            width: calc(100% - 40px);
-        }
-        .modal-box h3 {
-            margin-bottom: 10px;
-            color: var(--text);
-        }
-        .modal-box p {
-            color: var(--text-muted);
-            margin-bottom: 16px;
-        }
-        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
-        .btn-secondary { background: var(--surface-accent); color: var(--text); }
-        .btn-secondary:hover { background: var(--border); }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🃏 P2P PP - Planning Poker</h1>
-            <div class="header-actions">
-                <button id="themeToggleBtn" onclick="toggleTheme()" aria-pressed="false">Dark mode</button>
-            </div>
-            <div class="session-info">
-                <div class="info-box">
-                    <label>Your Name</label>
-                    <span id="yourName">-</span>
-                </div>
-                <div class="info-box">
-                    <label>Room ID</label>
-                    <span id="sessionId">-</span>
-                </div>
-                <div class="info-box">
-                    <label>Status</label>
-                    <span id="connectionStatus">Disconnected</span>
-                </div>
+        <h1>🃏 Planning Poker</h1>
+
+        <div class="setup-screen active">
+            <div class="setup-grid" role="group" aria-label="Room setup options">
+                <section class="setup-card" aria-labelledby="createHeading">
+                    <h2 id="createHeading" style="margin-bottom: 15px; color: #333; font-size: 1.25rem;">Create a new room</h2>
+                    <form id="createForm" novalidate>
+                        <div class="input-group">
+                            <label for="createName">Your name</label>
+                            <input type="text" id="createName" name="createName" placeholder="Enter your name" autocomplete="name" required aria-describedby="createNameError" />
+                            <div id="createNameError" class="field-error" aria-live="polite"></div>
+                        </div>
+                        <button type="submit" id="createRoomBtn">Create New Room</button>
+                    </form>
+                </section>
+
+                <section class="setup-card" aria-labelledby="joinHeading">
+                    <h2 id="joinHeading" style="margin-bottom: 15px; color: #333; font-size: 1.25rem;">Join an existing room</h2>
+                    <form id="joinForm" novalidate>
+                        <div class="input-group">
+                            <label for="joinName">Your name</label>
+                            <input type="text" id="joinName" name="joinName" placeholder="Enter your name" autocomplete="name" required aria-describedby="joinNameError" />
+                            <div id="joinNameError" class="field-error" aria-live="polite"></div>
+                        </div>
+                        <div class="input-group">
+                            <label for="joinRoomId">Room ID</label>
+                            <input type="text" id="joinRoomId" name="joinRoomId" placeholder="Enter room ID" required aria-describedby="joinRoomIdError" />
+                            <div id="joinRoomIdError" class="field-error" aria-live="polite"></div>
+                        </div>
+                        <button type="submit" id="joinRoomBtn">Join Room</button>
+                    </form>
+                </section>
             </div>
         </div>
 
-        <div id="joinSection" class="join-section">
-            <div class="auth-grid">
-                <div class="auth-card">
-                    <h3>Start a room</h3>
-                    <div class="row">
-                        <input type="text" id="nameInput" placeholder="Your name" onkeypress="handleEnter(event, 'create')" />
-                        <button onclick="createSession()">Create Room</button>
-                    </div>
-                </div>
-                <div class="auth-card">
-                    <h3>Join a room</h3>
-                    <div class="row">
-                        <input type="text" id="nameInputJoin" placeholder="Your name" onkeypress="handleEnter(event, 'join')" />
-                        <input type="text" id="sessionIdInput" placeholder="Room ID" onkeypress="handleEnter(event, 'join')" />
-                        <button onclick="joinSession()">Join Room</button>
-                    </div>
-                </div>
+        <div class="game-screen">
+            <div class="connection-status" id="connectionStatus">Connecting...</div>
+
+            <div class="room-info">
+                <strong>Room:</strong> <span id="currentRoom"></span> |
+                <strong>You:</strong> <span id="currentPlayer"></span>
+                <br>
+                <small style="color: #666; margin-top: 5px; display: block;">
+                    Share this URL: <strong id="shareUrl" style="color: #667eea;"></strong>
+                    <button id="copyUrlBtn" style="display: inline; width: auto; padding: 5px 10px; font-size: 12px; margin-left: 10px;">📋 Copy</button>
+                </small>
             </div>
+
+            <h3 style="margin-bottom: 15px; color: #333;">Players</h3>
+            <div class="players" id="players"></div>
+
+            <h3 style="margin-bottom: 15px; color: #333;">Select Your Card</h3>
+            <div class="cards-container" id="cards"></div>
+
+            <div class="actions">
+                <button id="revealBtn">Reveal Votes</button>
+                <button id="resetBtn" class="secondary-btn">New Round</button>
+            </div>
+
+            <div class="results" id="results" style="display: none;"></div>
         </div>
+    </div>
 
-        <div id="connectingOverlay" class="connecting-overlay hidden">
-            <div class="connecting-box">
-                <div class="spinner"></div>
-                <p id="connectingText">Connecting...</p>
-                <div style="margin-top: 12px;">
-                    <button id="cancelReconnectBtn" class="btn-secondary" style="display: none;" onclick="cancelReconnect()">Cancel</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Error Modal -->
-        <div id="errorModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="errorModalTitle">
-            <div class="modal-box">
-                <h3 id="errorModalTitle">Room not available</h3>
-                <p id="errorModalMessage" aria-live="polite">Room not available. Try again.</p>
-                <div class="modal-actions">
-                    <button class="btn-secondary" onclick="hideErrorModal()">Close</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="gameSection" class="hidden">
-            <div class="participants">
-                <h2>Participants</h2>
-                <div class="participant-grid" id="participantGrid"></div>
-            </div>
-
-            <div class="voting-section">
-                <h2>Cast Your Vote</h2>
-                <div class="cards" id="cardContainer"></div>
-                <div class="controls">
-                    <button onclick="revealVotes()" id="revealBtn" disabled>Reveal Votes</button>
-                    <button onclick="resetVotes()">New Round</button>
-                    <button onclick="leaveRoom()" class="btn-danger" id="leaveBtn">Leave Room</button>
-                    <button onclick="closeRoom()" class="btn-danger" id="closeBtn" style="display: none;">Close Room</button>
-                </div>
-                <div id="results" class="results hidden"></div>
+    <!-- Modal -->
+    <div id="appModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalMessage">
+        <div class="modal-dialog">
+            <h3 id="modalTitle" class="modal-title">Notice</h3>
+            <div id="modalMessage" class="modal-message"></div>
+            <div class="modal-actions">
+                <button id="modalCloseBtn" class="btn-inline" type="button">Close</button>
             </div>
         </div>
     </div>
 
-    <script>
-        const CARD_VALUES = ['0', '1', '2', '3', '5', '8', '13', '21', '?', '☕'];
-        
-        let room = null;
-        let sendMsg = null;
-        let onMsgUnsub = null;
-        let myName = '';
+    <script type="module">
+        import { joinRoom as trysteroJoin } from 'https://cdn.jsdelivr.net/npm/trystero@0.22.0/+esm';
+
+        const cardValues = ['0', '1', '2', '3', '5', '8', '13', '21', '?', '☕'];
+
+        let room;
+        let sendAction, getAction;
+        let players = new Map();
         let myVote = null;
-        let participants = {};
-        let isHost = false;
         let revealed = false;
-        let roomId = null;
-        let reconnectTimer = null;
-        let autoResuming = false;
-        let shouldAutoReconnect = true;
-        let __lastFocusedEl = null;
-        let transportIdToSelfId = {};
-        // Identity handling
-        // Use a stable baseId across browser restarts (localStorage)
-        // but a unique tabId per tab/session (sessionStorage) to avoid collisions
-        // when hosting and joining from the same browser.
-        const selfId = (() => {
-            try {
-                // Stable across restarts
-                let baseId = localStorage.getItem('pp_selfId');
-                if (!baseId) {
-                    baseId = (crypto && crypto.randomUUID)
-                        ? crypto.randomUUID()
-                        : (Date.now().toString(36) + Math.random().toString(36).slice(2));
-                    localStorage.setItem('pp_selfId', baseId);
-                }
-                // Unique per tab
-                let tabId = sessionStorage.getItem('pp_tabId');
-                if (!tabId) {
-                    tabId = (crypto && crypto.randomUUID)
-                        ? crypto.randomUUID().slice(0, 8)
-                        : Math.random().toString(36).slice(2, 10);
-                    sessionStorage.setItem('pp_tabId', tabId);
-                }
-                return `${baseId}:${tabId}`;
-            } catch {
-                // Fallback: random per execution to avoid collisions
-                return (Date.now().toString(36) + Math.random().toString(36).slice(2));
-            }
-        })();
+        let myPeerId;
+        let myPlayerName;
+        const NAME_KEY = 'userName';
 
-        // Trystero configuration (Nostr-only)
-        // Optional override: define window.P2P_CONFIG = { appId: 'p2p-pp', stunUrls: ['stun:example.org:3478', ...] } before this script runs
-        const __P2P_APP_CONFIG = (typeof window !== 'undefined' && window.P2P_CONFIG) ? window.P2P_CONFIG : {};
-        const __DEFAULT_STUN_URLS = [
-            'stun:stun.l.google.com:19302',
-            'stun:stun1.l.google.com:19302',
-            'stun:stun2.l.google.com:19302',
-            'stun:stun3.l.google.com:19302',
-            'stun:stun4.l.google.com:19302',
-            'stun:stun.cloudflare.com:3478'
-        ];
-        const __STUN_URLS = Array.isArray(__P2P_APP_CONFIG.stunUrls) && __P2P_APP_CONFIG.stunUrls.length
-            ? __P2P_APP_CONFIG.stunUrls
-            : __DEFAULT_STUN_URLS;
-        // Nostr relays — use a robust default set, but allow override via window.P2P_CONFIG.relays
-        const __DEFAULT_RELAYS = [
-            'wss://relay.damus.io',
-            'wss://nos.lol',
-            'wss://nostr.wine',
-            'wss://relay.snort.social',
-            'wss://offchain.pub',
-            'wss://relay.current.fyi'
-        ];
-        const __RELAYS = Array.isArray(__P2P_APP_CONFIG.relays) && __P2P_APP_CONFIG.relays.length
-            ? __P2P_APP_CONFIG.relays
-            : __DEFAULT_RELAYS;
-        
-        function __buildIceServers(urls) {
-            return urls.map(u => typeof u === 'string' ? { urls: u } : u);
-        }
-        function buildRtcConfig() {
-            // Optionally include TURN servers if provided via config
-            // Accept either array of strings (urls) or full RTCIceServer objects
-            const turnList = (Array.isArray(__P2P_APP_CONFIG.turnServers) && __P2P_APP_CONFIG.turnServers.length)
-                ? __P2P_APP_CONFIG.turnServers
-                : (Array.isArray(__P2P_APP_CONFIG.turnUrls) && __P2P_APP_CONFIG.turnUrls.length)
-                    ? __P2P_APP_CONFIG.turnUrls
-                    : [];
-            const iceServers = __buildIceServers(__STUN_URLS).concat(__buildIceServers(turnList));
-            return { iceServers, iceTransportPolicy: 'all' };
-        }
-
-        // Simple session persistence for auto-resume across refresh
-        function saveSession(role, name, room) {
-            try {
-                localStorage.setItem('pp_role', role);
-                localStorage.setItem('pp_name', name);
-                localStorage.setItem('pp_room', room);
-            } catch {}
-        }
-        function clearSession() {
-            try {
-                localStorage.removeItem('pp_role');
-                // Keep pp_name so the user's name remains prefilled across sessions
-                localStorage.removeItem('pp_room');
-            } catch {}
-        }
-
-        function stopReconnectLoop() {
-            if (reconnectTimer) {
-                clearTimeout(reconnectTimer);
-                reconnectTimer = null;
-            }
-        }
-
-        function cancelReconnect() {
-            // User cancels any ongoing reconnect attempts
-            shouldAutoReconnect = false;
-            stopReconnectLoop();
-            try { if (onMsgUnsub) onMsgUnsub(); } catch {}
-            try { if (room) room.leave(); } catch {}
-            hideConnecting();
-            const statusEl = document.getElementById('connectionStatus');
-            if (statusEl) statusEl.textContent = 'Reconnect canceled';
-        }
-
-        function startHostWithRetry(fixedRoomId, hostName, attempts = 12, onDone = () => {}) {
-            if (!shouldAutoReconnect) {
-                console.log('Auto-reconnect disabled (startHostWithRetry entry).');
-                onDone();
-                return;
-            }
-            if (attempts <= 0) {
-                document.getElementById('connectionStatus').textContent = 'Reconnect failed';
-                onDone();
-                return;
-            }
-
-            myName = hostName;
-            isHost = true;
-            roomId = fixedRoomId;
-
-            showConnecting('Creating room...');
-            document.getElementById('connectionStatus').textContent = 'Connecting...';
-
-            try { if (onMsgUnsub) onMsgUnsub(); } catch(e){}
-            try { if (room) room.leave(); } catch(e){}
-            participants = {};
-            revealed = false;
-            myVote = null;
-
-            (async () => {
-                try {
-                    const appId = __P2P_APP_CONFIG.appId || 'p2p-pp';
-                    const rtcConfig = buildRtcConfig();
-                    const providerOpts = { appId, relays: __RELAYS };
-                    room = window.trysteroNostr.joinRoom(providerOpts, fixedRoomId, { rtcConfig });
-                    const _act = room.makeAction('pp-msg');
-                    const _send = _act[0];
-                    const _on = _act[1];
-                    sendMsg = (data, targets) => targets ? _send(data, targets) : _send(data);
-                    if (onMsgUnsub) { try { onMsgUnsub(); } catch(_){} }
-                    onMsgUnsub = _on((data, transportPeerId) => handleMessage(data, transportPeerId));
-
-                    room.onPeerJoin((transportPeerId) => {
-                        // Ask the newcomer to announce their identity (fallback in case broadcast('join') is delayed/lost)
-                        try { sendMsg({ type: 'who' }, [transportPeerId]); } catch {}
-                        // Also send current snapshot so their UI populates immediately with existing participants
-                        try { sendMsg({ type: 'participants', participants, revealed }, [transportPeerId]); } catch {}
-                    });
-                    room.onPeerLeave((transportPeerId) => {
-                        const sid = transportIdToSelfId[transportPeerId];
-                        if (sid && participants[sid]) {
-                            delete participants[sid];
-                            updateParticipants();
-                        }
-                    });
-
-                    // Host is in the room now
-                    hideConnecting();
-                    document.getElementById('sessionId').textContent = roomId;
-                    document.getElementById('yourName').textContent = myName;
-                    document.getElementById('connectionStatus').textContent = 'Connected (Host)';
-                    saveSession('host', myName, roomId);
-
-                    const baseUrl = window.location.origin + window.location.pathname;
-                    const shareUrl = baseUrl + '?room=' + roomId;
-                    window.history.pushState({}, '', '?room=' + roomId);
-
-                    document.getElementById('joinSection').classList.add('hidden');
-                    document.getElementById('gameSection').classList.remove('hidden');
-
-                    participants[selfId] = { name: myName, vote: null, peerId: selfId };
-                    updateParticipants();
-                    setupCards();
-                    document.getElementById('closeBtn').style.display = 'inline-block';
-                    const leaveBtnEl2 = document.getElementById('leaveBtn');
-                    if (leaveBtnEl2) leaveBtnEl2.style.display = 'none';
-                    onDone();
-                } catch (err) {
-                    console.error('Trystero host init error:', err);
-                    document.getElementById('connectionStatus').textContent = 'Error - Retry';
-                    onDone();
-                }
-            })();
-        }
-
-        function autoJoinClient(targetRoomId, clientName, onDone = () => {}, attempts = 0) {
-            if (!shouldAutoReconnect) {
-                console.log('Auto-reconnect disabled (autoJoinClient entry).');
-                onDone();
-                return;
-            }
-            showConnecting('Reconnecting to Host...', true);
-            document.getElementById('connectionStatus').textContent = 'Reconnecting...';
-            try {
-                joinSessionDirect(targetRoomId, clientName);
-                // on successful joinSessionDirect, hideConnecting will be called there
-                stopReconnectLoop();
-                onDone();
-            } catch (e) {
-                console.error('autoJoinClient error:', e);
-                // Schedule next attempt after 3s
-                reconnectTimer = setTimeout(() => autoJoinClient(targetRoomId, clientName, onDone, attempts + 1), 3000);
-            }
-        }
-
-        // Theme handling
-        function applyTheme(theme) {
-            const isDark = theme === 'dark';
-            document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-            const btn = document.getElementById('themeToggleBtn');
-            if (btn) {
-                btn.textContent = isDark ? 'Light mode' : 'Dark mode';
-                btn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
-            }
-        }
-
-        function initTheme() {
-            const stored = localStorage.getItem('theme');
-            const mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-
-            function applySystemPreference() {
-                // Only follow system if user has not chosen a theme explicitly
-                if (!localStorage.getItem('theme')) {
-                    const isDark = mql && mql.matches;
-                    applyTheme(isDark ? 'dark' : 'light');
-                }
-            }
-
-            if (stored) {
-                applyTheme(stored);
-            } else {
-                const prefersDark = mql && mql.matches;
-                applyTheme(prefersDark ? 'dark' : 'light');
-                // Listen to changes in system theme and update automatically when no user preference
-                if (mql) {
-                    if (typeof mql.addEventListener === 'function') {
-                        mql.addEventListener('change', applySystemPreference);
-                    } else if (typeof mql.addListener === 'function') {
-                        mql.addListener(applySystemPreference);
-                    }
-                }
-            }
-        }
-
-        function toggleTheme() {
-            const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-            const next = current === 'dark' ? 'light' : 'dark';
-            localStorage.setItem('theme', next);
-            applyTheme(next);
-        }
-
-        // Generate short room ID (6 characters)
         function generateRoomId() {
-            return Math.random().toString(36).substring(2, 8).toUpperCase();
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let result = '';
+            for (let i = 0; i < 6; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
         }
 
-        // Auto-resume logic on load
-        window.addEventListener('DOMContentLoaded', () => {
-            initTheme();
-            const urlParams = new URLSearchParams(window.location.search);
-            const urlRoomId = urlParams.get('room');
-
-            if (urlRoomId) {
-                document.getElementById('sessionIdInput').value = urlRoomId;
-                document.getElementById('sessionId').textContent = urlRoomId;
-            }
-
-            // Prefill name inputs from previous usage (if available)
-            const storedNameOnly = localStorage.getItem('pp_name');
-            if (storedNameOnly) {
-                const nameCreate = document.getElementById('nameInput');
-                const nameJoin = document.getElementById('nameInputJoin');
-                if (nameCreate) nameCreate.value = storedNameOnly;
-                if (nameJoin) nameJoin.value = storedNameOnly;
-            }
-
-            // Attempt to auto-resume previous session only if URL explicitly has a room param
-            const storedRole = localStorage.getItem('pp_role');
-            const storedName = localStorage.getItem('pp_name');
-            const storedRoom = localStorage.getItem('pp_room');
-
-            if (urlRoomId && storedRole && storedName && storedRoom && storedRoom === urlRoomId) {
-                // Pre-fill inputs/labels with the URL room
-                document.getElementById('sessionIdInput').value = urlRoomId;
-                document.getElementById('sessionId').textContent = urlRoomId;
-
-                autoResuming = true;
-                if (storedRole === 'host') {
-                    // Resume hosting this room ID
-                    myName = storedName;
-                    isHost = true;
-                    roomId = storedRoom;
-                    document.getElementById('yourName').textContent = myName;
-                    document.getElementById('connectionStatus').textContent = 'Reconnecting as Host...';
-                    showConnecting('Reconnecting as Host...', true);
-                    startHostWithRetry(roomId, myName, 12, () => {
-                        autoResuming = false;
-                        hideConnecting();
-                    });
-                } else if (storedRole === 'client') {
-                    myName = storedName;
-                    isHost = false;
-                    roomId = storedRoom;
-                    document.getElementById('yourName').textContent = myName;
-                    document.getElementById('connectionStatus').textContent = 'Reconnecting...';
-                    showConnecting('Reconnecting to Host...', true);
-                    autoJoinClient(roomId, myName, () => {
-                        autoResuming = false;
-                        hideConnecting();
-                    });
-                }
-            }
-        });
-
-        function handleEnter(event, type, roomId = null) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                if (type === 'create') {
-                    createSession();
-                } else if (type === 'join') {
-                    joinSession();
-                } else if (type === 'direct' && roomId) {
-                    joinSessionDirect(roomId);
-                }
-            }
+        function getRoomFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('room');
         }
 
-        function showConnecting(text = 'Connecting...', allowCancel = false) {
-            document.getElementById('connectingText').textContent = text;
-            const overlay = document.getElementById('connectingOverlay');
-            overlay.classList.remove('hidden');
-            const btn = document.getElementById('cancelReconnectBtn');
-            if (btn) {
-                btn.style.display = allowCancel ? 'inline-block' : 'none';
-            }
-        }
+        let lastFocusedEl = null;
+        function openModal(message, variant = 'info', titleText) {
+            const overlay = document.getElementById('appModal');
+            const dialog = overlay?.querySelector('.modal-dialog');
+            const title = document.getElementById('modalTitle');
+            const msg = document.getElementById('modalMessage');
+            const closeBtn = document.getElementById('modalCloseBtn');
+            if (!overlay || !title || !msg || !closeBtn) return;
 
-        function hideConnecting() {
-            document.getElementById('connectingOverlay').classList.add('hidden');
-        }
+            // Variant styling
+            overlay.classList.remove('modal-success', 'modal-error');
+            if (variant === 'success') overlay.classList.add('modal-success');
+            if (variant === 'error') overlay.classList.add('modal-error');
 
-        function showErrorModal(message = 'Room not available. Try again.', title = 'Room not available') {
-            const modal = document.getElementById('errorModal');
-            const msgEl = document.getElementById('errorModalMessage');
-            const titleEl = document.getElementById('errorModalTitle');
-            if (titleEl) titleEl.textContent = title;
-            if (msgEl) msgEl.textContent = message;
+            // Content
+            title.textContent = titleText || (variant === 'error' ? 'Error' : variant === 'success' ? 'Success' : 'Notice');
+            msg.textContent = message || '';
 
-            // Remember last focused element to restore after close
-            __lastFocusedEl = document.activeElement;
-
-            modal.classList.remove('hidden');
-
-            // Focus the first focusable (Close button)
-            const closeBtn = modal.querySelector('button');
-            if (closeBtn && typeof closeBtn.focus === 'function') {
+            // Open + focus
+            lastFocusedEl = document.activeElement;
+            overlay.classList.add('open');
+            // Move focus into dialog
+            setTimeout(() => {
                 closeBtn.focus();
-            }
+            }, 0);
 
-            // Add simple focus trap and ESC-to-close
-            function trap(e) {
+            // Basic focus trap within dialog
+            function handleKeydown(e) {
                 if (e.key === 'Escape') {
-                    hideErrorModal();
-                    return;
-                }
-                if (e.key === 'Tab') {
-                    const focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-                    if (!focusable.length) return;
-                    const first = focusable[0];
-                    const last = focusable[focusable.length - 1];
-                    const active = document.activeElement;
-                    if (e.shiftKey && active === first) {
+                    closeModal();
+                } else if (e.key === 'Tab') {
+                    const focusable = dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+                    const list = Array.from(focusable).filter(el => !el.hasAttribute('disabled'));
+                    if (list.length === 0) return;
+                    const first = list[0];
+                    const last = list[list.length - 1];
+                    if (e.shiftKey && document.activeElement === first) {
                         e.preventDefault();
                         last.focus();
-                    } else if (!e.shiftKey && active === last) {
+                    } else if (!e.shiftKey && document.activeElement === last) {
                         e.preventDefault();
                         first.focus();
                     }
                 }
             }
-            modal.__trapHandler = trap;
-            document.addEventListener('keydown', trap, true);
+            overlay.addEventListener('keydown', handleKeydown);
+            overlay._handleKeydown = handleKeydown;
         }
-        function hideErrorModal() {
-            const modal = document.getElementById('errorModal');
-            modal.classList.add('hidden');
-            if (modal.__trapHandler) {
-                document.removeEventListener('keydown', modal.__trapHandler, true);
-                delete modal.__trapHandler;
+        function closeModal() {
+            const overlay = document.getElementById('appModal');
+            if (!overlay) return;
+            overlay.classList.remove('open');
+            if (overlay._handleKeydown) {
+                overlay.removeEventListener('keydown', overlay._handleKeydown);
+                delete overlay._handleKeydown;
             }
-            if (__lastFocusedEl && typeof __lastFocusedEl.focus === 'function') {
-                try { __lastFocusedEl.focus(); } catch(e) {}
+            if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') {
+                lastFocusedEl.focus();
             }
-        }
-
-        function createSession() {
-            // User explicitly starts a new session: enable auto-reconnect again
-            shouldAutoReconnect = true;
-            const name = document.getElementById('nameInput').value.trim();
-            if (!name) {
-                showErrorModal('Please enter your name', 'Missing name');
-                return;
-            }
-            try { localStorage.setItem('pp_name', name); } catch {}
-            myName = name;
-            isHost = true;
-            roomId = generateRoomId();
-            showConnecting('Creating room...');
-            document.getElementById('connectionStatus').textContent = 'Connecting...';
-            startHostWithRetry(roomId, myName, 12, () => {
-                // nothing extra here; startHostWithRetry handles UI on success
-            });
         }
 
-        function copyShareUrl(url) {
-            navigator.clipboard.writeText(url).then(() => {
-                console.log('Link copied to clipboard!');
-            }).catch(() => {
-                showErrorModal('Failed to copy. Please copy manually.', 'Copy failed');
-            });
-        }
-
-        function joinSession() {
-            const name = document.getElementById('nameInputJoin').value.trim();
-            const sessionId = document.getElementById('sessionIdInput').value.trim().toUpperCase();
-            
-            if (!name || !sessionId) {
-                showErrorModal('Please enter your name and room ID', 'Missing information');
-                return;
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlRoom = getRoomFromURL();
+            if (urlRoom) {
+                const joinRoomInput = document.getElementById('joinRoomId');
+                if (joinRoomInput) joinRoomInput.value = urlRoom;
             }
-            
-            // Persist the entered name so it can be prefilled next time
-            try { localStorage.setItem('pp_name', name); } catch {}
-            
-            joinSessionDirect(sessionId, name);
-        }
 
-        function joinSessionDirect(sessionId, name = null) {
-            shouldAutoReconnect = true;
-            if (!name) {
-                const el = document.getElementById('nameInputJoin') || document.getElementById('nameInput');
-                const stored = (typeof localStorage !== 'undefined' ? localStorage.getItem('pp_name') : '') || '';
-                name = el && el.value ? el.value.trim() : stored.trim();
+            const createForm = document.getElementById('createForm');
+            const joinForm = document.getElementById('joinForm');
+
+            if (createForm) {
+                createForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    createRoom();
+                });
             }
-            if (!name) {
-                showErrorModal('Please enter your name', 'Missing name');
-                return;
+            if (joinForm) {
+                joinForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    joinRoom();
+                });
             }
-            try { localStorage.setItem('pp_name', name); } catch {}
-            myName = name;
-            isHost = false;
-            roomId = sessionId;
 
-            showConnecting('Joining room...');
-            document.getElementById('connectionStatus').textContent = 'Connecting...';
-
-            (async () => {
-                try {
-                    const appId = __P2P_APP_CONFIG.appId || 'p2p-pp';
-                    const rtcConfig = buildRtcConfig();
-                    const providerOpts = { appId, relays: __RELAYS };
-                    room = window.trysteroNostr.joinRoom(providerOpts, sessionId, { rtcConfig });
-
-                    const _act = room.makeAction('pp-msg');
-                    const _send = _act[0];
-                    const _on = _act[1];
-                    sendMsg = (data, targets) => targets ? _send(data, targets) : _send(data);
-                    if (onMsgUnsub) { try { onMsgUnsub(); } catch(_){} }
-                    onMsgUnsub = _on((data, transportPeerId) => handleMessage(data, transportPeerId));
-
-                    room.onPeerJoin((transportPeerId) => {
-                        // When we see someone join, ask for snapshot implicitly; host will broadcast participants
-                        // No-op here for client
-                    });
-                    room.onPeerLeave((transportPeerId) => {
-                        const sid = transportIdToSelfId[transportPeerId];
-                        if (sid && participants[sid]) {
-                            delete participants[sid];
-                            updateParticipants();
-                        }
-                    });
-
-                    document.getElementById('yourName').textContent = myName;
-                    document.getElementById('sessionId').textContent = sessionId;
-                    document.getElementById('joinSection').classList.add('hidden');
-                    document.getElementById('gameSection').classList.remove('hidden');
-                    const leaveBtnEl = document.getElementById('leaveBtn');
-                    if (leaveBtnEl) leaveBtnEl.style.display = 'inline-block';
-                    const closeBtnEl = document.getElementById('closeBtn');
-                    if (closeBtnEl) closeBtnEl.style.display = 'none';
-                    setupCards();
-
-                    // Send join announcement
-                    broadcast({ type: 'join', name: myName, peerId: selfId });
-
-                    // Immediately add self to participants on the client
-                    participants[selfId] = { name: myName, vote: null, peerId: selfId };
-                    updateParticipants();
-
-                    hideConnecting();
-                    document.getElementById('connectionStatus').textContent = 'Connected';
-                    saveSession('client', myName, roomId);
-                } catch (err) {
-                    console.error('Trystero client join error:', err);
-                    hideConnecting();
-                    showErrorModal('Room not available. Try again.', 'Room not available');
-                    document.getElementById('connectionStatus').textContent = 'Error - Retry';
-                }
-            })();
-        }
-
-        function setupConnection(conn) {
-            conn.on('data', (data) => {
-                handleMessage(data, conn);
-            });
-            
-            conn.on('close', () => {
-                connections = connections.filter(c => c !== conn);
-                if (participants[conn.peer]) {
-                    delete participants[conn.peer];
-                    updateParticipants();
-                }
-                
-                // If our connection to the host closed, try to reconnect automatically
-                if (!isHost && conn.peer === roomId) {
-                    if (!shouldAutoReconnect) {
-                        console.log('Auto-reconnect disabled (conn close). Not retrying.');
-                        return;
-                    }
-                    console.log('Disconnected from host. Attempting to reconnect...');
-                    showConnecting('Reconnecting to Host...', true);
-                    // Enforce 3s polling interval before attempting reconnect
-                    reconnectTimer = setTimeout(() => autoJoinClient(roomId, myName), 3000);
+            // Clear error messages on input
+            const createName = document.getElementById('createName');
+            const joinName = document.getElementById('joinName');
+            const joinRoomId = document.getElementById('joinRoomId');
+            [createName, joinName, joinRoomId].forEach(input => {
+                if (input) {
+                    input.addEventListener('input', () => clearError(input));
                 }
             });
-            
-            conn.on('error', (err) => {
-                console.error('Connection error:', err);
-            });
-        }
 
-        function handleMessage(data, fromId) {
-            switch(data.type) {
-                case 'who':
-                    // Reply with our identity; target the requester if transport ID provided
+            // Prefill name fields from previous session (localStorage)
+            try {
+                const storedName = localStorage.getItem(NAME_KEY);
+                if (storedName) {
+                    if (createName && !createName.value) createName.value = storedName;
+                    if (joinName && !joinName.value) joinName.value = storedName;
+                }
+            } catch (e) {
+                // ignore storage errors
+            }
+
+            // Keep stored name up-to-date as user types
+            [createName, joinName].forEach(input => {
+                if (!input) return;
+                input.addEventListener('input', (ev) => {
+                    const val = ev.target.value.trim();
                     try {
-                        if (sendMsg) {
-                            if (fromId) {
-                                sendMsg({ type: 'join', name: myName, peerId: selfId }, [fromId]);
-                            } else {
-                                sendMsg({ type: 'join', name: myName, peerId: selfId });
-                            }
-                        }
-                    } catch (e) { console.warn('Failed to respond to who:', e); }
-                    break;
-                case 'join':
-                    // Map transport peer ID to the sender's selfId for cleanup on leave
-                    if (fromId) {
-                        transportIdToSelfId[fromId] = data.peerId;
-                    }
-                    // Track/join participant
-                    participants[data.peerId] = { 
-                        name: data.name, 
-                        vote: null,
-                        peerId: data.peerId
-                    };
-                    updateParticipants();
-                    
-                    if (isHost) {
-                        broadcast({
-                            type: 'participants',
-                            participants: participants,
-                            revealed: revealed
-                        });
-                    }
-                    break;
-                    
-                case 'participants':
-                    // Merge incoming participants with existing to avoid dropping local entries (e.g., self)
-                    try {
-                        const incoming = data && data.participants ? data.participants : {};
-                        participants = Object.assign({}, participants, incoming);
-                        // Ensure self is present on client even if the host snapshot didn't yet include us
-                        if (!participants[selfId] && myName) {
-                            participants[selfId] = { name: myName, vote: myVote ?? null, peerId: selfId };
+                        if (val) {
+                            localStorage.setItem(NAME_KEY, val);
+                        } else {
+                            localStorage.removeItem(NAME_KEY);
                         }
                     } catch (e) {
-                        console.warn('Participants merge failed, using incoming snapshot:', e);
-                        participants = data.participants || {};
-                        if (!participants[selfId] && myName) {
-                            participants[selfId] = { name: myName, vote: myVote ?? null, peerId: selfId };
-                        }
+                        // ignore storage errors
                     }
-                    revealed = data.revealed;
-                    updateParticipants();
-                    break;
-                    
-                case 'vote':
-                    if (participants[data.peerId]) {
-                        participants[data.peerId].vote = data.vote;
-                        updateParticipants();
-                        
-                        if (isHost) {
-                            broadcast({
-                                type: 'participants',
-                                participants: participants,
-                                revealed: revealed
-                            });
-                        }
+                });
+            });
+
+            // Modal close handlers
+            const modalCloseBtn = document.getElementById('modalCloseBtn');
+            const modalOverlay = document.getElementById('appModal');
+            if (modalCloseBtn) modalCloseBtn.addEventListener('click', closeModal);
+            if (modalOverlay) {
+                modalOverlay.addEventListener('click', (e) => {
+                    if (e.target === modalOverlay) closeModal();
+                });
+            }
+
+            // Focus the first name field for accessibility
+            if (createName) createName.focus();
+        });
+
+        function showError(inputEl, message) {
+            if (!inputEl) return;
+            const errorId = inputEl.getAttribute('aria-describedby');
+            if (errorId) {
+                const errorEl = document.getElementById(errorId);
+                if (errorEl) errorEl.textContent = message || '';
+            }
+            if (message) inputEl.setAttribute('aria-invalid', 'true');
+        }
+        function clearError(inputEl) {
+            if (!inputEl) return;
+            const errorId = inputEl.getAttribute('aria-describedby');
+            if (errorId) {
+                const errorEl = document.getElementById(errorId);
+                if (errorEl) errorEl.textContent = '';
+            }
+            inputEl.removeAttribute('aria-invalid');
+        }
+
+        function createRoom() {
+            const nameInput = document.getElementById('createName');
+            const playerName = nameInput ? nameInput.value.trim() : '';
+
+            if (!playerName) {
+                showError(nameInput, 'Please enter your name');
+                nameInput && nameInput.focus();
+                return;
+            }
+
+            clearError(nameInput);
+
+            // Persist name for future visits
+            try {
+                localStorage.setItem(NAME_KEY, playerName);
+            } catch (e) {
+                // ignore storage errors
+            }
+
+            const roomId = generateRoomId();
+
+            const url = new URL(window.location);
+            url.searchParams.set('room', roomId);
+            window.history.pushState({}, '', url);
+
+            initGame(playerName, roomId);
+        }
+
+        function joinRoom() {
+            const nameInput = document.getElementById('joinName');
+            const roomInput = document.getElementById('joinRoomId');
+            const playerName = nameInput ? nameInput.value.trim() : '';
+            const roomId = roomInput ? roomInput.value.trim().toUpperCase() : '';
+
+            let hasError = false;
+            if (!playerName) {
+                showError(nameInput, 'Please enter your name');
+                if (!hasError) nameInput && nameInput.focus();
+                hasError = true;
+            } else {
+                clearError(nameInput);
+            }
+            if (!roomId) {
+                showError(roomInput, 'Please enter the room ID');
+                if (!hasError) roomInput && roomInput.focus();
+                hasError = true;
+            } else {
+                clearError(roomInput);
+            }
+            if (hasError) return;
+
+            // Persist name for future visits
+            try {
+                localStorage.setItem(NAME_KEY, playerName);
+            } catch (e) {
+                // ignore storage errors
+            }
+
+            const url = new URL(window.location);
+            url.searchParams.set('room', roomId);
+            window.history.pushState({}, '', url);
+
+            initGame(playerName, roomId);
+        }
+
+        function initGame(playerName, roomId) {
+            myPlayerName = playerName;
+
+            const config = {
+                appId: 'planning-poker-p2p'
+            };
+
+            room = trysteroJoin(config, roomId);
+            myPeerId = room.selfId;
+
+            document.getElementById('currentRoom').textContent = roomId;
+            document.getElementById('currentPlayer').textContent = playerName;
+
+            const shareUrl = window.location.origin + window.location.pathname + '?room=' + roomId;
+            document.getElementById('shareUrl').textContent = shareUrl;
+
+            players.set(myPeerId, {
+                id: myPeerId,
+                name: playerName,
+                vote: null,
+                isMe: true
+            });
+
+            [sendAction, getAction] = room.makeAction('gameAction');
+
+            getAction((data, peerId) => {
+                console.log('=== ACTION RECEIVED ===');
+                console.log('Type:', data.type);
+                console.log('From peer:', peerId);
+                console.log('Full data:', data);
+
+                if (data.type === 'playerJoin') {
+                    const incomingId = (data && data.player && data.player.id) ? data.player.id : peerId;
+                    const incomingName = (data && data.player && data.player.name) ? data.player.name : 'Player';
+                    const incomingVote = (data && data.player && typeof data.player.vote !== 'undefined') ? data.player.vote : null;
+
+                    console.log('Resolved playerJoin -> id:', incomingId, 'name:', incomingName, 'from peer:', peerId);
+
+                    if (incomingId === myPeerId) {
+                        console.log('Skipped - this is me');
+                    } else {
+                        players.set(incomingId, {
+                            id: incomingId,
+                            name: incomingName,
+                            vote: incomingVote,
+                            isMe: false
+                        });
+                        console.log('Player added! Total players:', players.size);
+                        renderPlayers();
+                        updateConnectionStatus();
                     }
-                    break;
-                    
-                case 'reveal':
+                } else if (data.type === 'vote') {
+                    if (players.has(peerId)) {
+                        players.get(peerId).vote = data.vote;
+                        console.log('Player', peerId, 'voted:', data.vote);
+                        renderPlayers();
+                    }
+                } else if (data.type === 'reveal') {
                     revealed = true;
-                    updateParticipants();
+                    renderPlayers();
                     showResults();
-                    break;
-                    
-                case 'reset':
+                } else if (data.type === 'reset') {
                     revealed = false;
+                    players.forEach(p => p.vote = null);
                     myVote = null;
-                    for (let id in participants) {
-                        participants[id].vote = null;
+                    document.getElementById('results').style.display = 'none';
+                    renderPlayers();
+                    renderCards();
+                }
+            });
+
+            room.onPeerJoin(peerId => {
+                console.log('Peer joined:', peerId);
+                updateConnectionStatus();
+
+                const myInfo = {
+                    type: 'playerJoin',
+                    player: {
+                        id: myPeerId,
+                        name: myPlayerName,
+                        vote: myVote
                     }
-                    updateParticipants();
-                    document.getElementById('results').classList.add('hidden');
-                    document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
-                    break;
-                    
-                case 'room_closed':
-                    shouldAutoReconnect = false;
-                    stopReconnectLoop();
-                    clearSession();
-                    hideConnecting();
-                    redirectToLogin('Room closed by host');
-                    break;
-            }
+                };
+                console.log('Sending my info:', myInfo);
+
+                setTimeout(() => {
+                    sendAction(myInfo);
+                }, 300);
+            });
+
+            room.onPeerLeave(peerId => {
+                console.log('Peer left:', peerId);
+                players.delete(peerId);
+                renderPlayers();
+                updateConnectionStatus();
+            });
+
+            document.querySelector('.setup-screen').classList.remove('active');
+            document.querySelector('.game-screen').classList.add('active');
+
+            renderCards();
+            renderPlayers();
+            updateConnectionStatus();
+
+            document.getElementById('revealBtn').addEventListener('click', revealVotes);
+            document.getElementById('resetBtn').addEventListener('click', resetVotes);
+            document.getElementById('copyUrlBtn').addEventListener('click', copyUrl);
         }
 
-        function broadcast(data, targets) {
-            if (typeof sendMsg === 'function') {
-                try { sendMsg(data, targets); } catch(e) { console.error('broadcast send error', e); }
-            }
-        }
-
-        function setupCards() {
-            const container = document.getElementById('cardContainer');
+        function renderCards() {
+            const container = document.getElementById('cards');
             container.innerHTML = '';
-            
-            CARD_VALUES.forEach(value => {
+
+            cardValues.forEach(value => {
                 const card = document.createElement('div');
                 card.className = 'card';
+                if (myVote === value) card.classList.add('selected');
                 card.textContent = value;
-                card.onclick = () => selectCard(value, card);
+                card.onclick = () => selectCard(value);
                 container.appendChild(card);
             });
         }
 
-        function selectCard(value, cardElement) {
-            if (revealed) return;
-            
+        function selectCard(value) {
             myVote = value;
-            if (participants[selfId]) {
-                participants[selfId].vote = value;
-            }
-            
-            document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
-            cardElement.classList.add('selected');
-            
-            broadcast({
+            players.get(myPeerId).vote = value;
+
+            sendAction({
                 type: 'vote',
-                vote: value,
-                peerId: selfId
+                vote: value
             });
-            
-            updateParticipants();
+
+            renderCards();
+            renderPlayers();
         }
 
-        function updateParticipants() {
-            const grid = document.getElementById('participantGrid');
-            grid.innerHTML = '';
-            
-            for (let id in participants) {
-                const p = participants[id];
+        function renderPlayers() {
+            const container = document.getElementById('players');
+            container.innerHTML = '';
+
+            players.forEach(player => {
                 const card = document.createElement('div');
-                card.className = 'participant-card';
-                
-                if (p.vote !== null) {
-                    card.classList.add('voted');
-                }
-                if (revealed) {
-                    card.classList.add('revealed');
-                }
-                
-                const nameDiv = document.createElement('div');
-                nameDiv.className = 'participant-name';
-                nameDiv.textContent = p.name + (id === selfId ? ' (You)' : '');
-                
-                const voteDiv = document.createElement('div');
-                voteDiv.className = 'participant-vote';
-                
-                if (revealed && p.vote !== null) {
-                    voteDiv.textContent = p.vote;
-                } else if (p.vote !== null) {
-                    voteDiv.className = 'participant-vote voted';
-                    voteDiv.textContent = '✓';
-                } else {
-                    voteDiv.textContent = '-';
-                }
-                
-                card.appendChild(nameDiv);
-                card.appendChild(voteDiv);
-                grid.appendChild(card);
-            }
-            // Update reveal button enabled state
-            updateRevealButtonState();
-        }
+                card.className = 'player-card';
 
-        // Helpers to manage Reveal button availability
-        function getVoteCount() {
-            let count = 0;
-            for (let id in participants) {
-                if (participants[id] && participants[id].vote !== null) count++;
-            }
-            return count;
-        }
-        function updateRevealButtonState() {
-            const btn = document.getElementById('revealBtn');
-            if (!btn) return;
-            btn.disabled = getVoteCount() === 0;
+                if (player.vote !== null) card.classList.add('voted');
+                if (player.isMe) card.classList.add('me');
+
+                const name = document.createElement('div');
+                name.className = 'player-name';
+                name.textContent = player.name + (player.isMe ? ' (You)' : '');
+
+                const status = document.createElement('div');
+                status.className = 'player-status';
+                status.textContent = player.vote !== null ? '✓ Voted' : 'Waiting...';
+
+                card.appendChild(name);
+                card.appendChild(status);
+
+                if (revealed && player.vote !== null) {
+                    const vote = document.createElement('div');
+                    vote.className = 'player-vote';
+                    vote.textContent = player.vote;
+                    card.appendChild(vote);
+                }
+
+                container.appendChild(card);
+            });
         }
 
         function revealVotes() {
             revealed = true;
-            broadcast({ type: 'reveal' });
-            updateParticipants();
+            sendAction({ type: 'reveal' });
+            renderPlayers();
             showResults();
-        }
-
-        function showResults() {
-            const votes = Object.values(participants)
-                .map(p => p.vote)
-                .filter(v => v !== null && v !== '?' && v !== '☕')
-                .map(v => parseFloat(v));
-            
-            if (votes.length === 0) {
-                return;
-            }
-            
-            const avg = votes.reduce((a, b) => a + b, 0) / votes.length;
-            const min = Math.min(...votes);
-            const max = Math.max(...votes);
-            
-            const resultsDiv = document.getElementById('results');
-            resultsDiv.innerHTML = `
-                <h3>Results</h3>
-                <div class="results-stats">
-                    <div class="stat">
-                        <div class="stat-label">Average</div>
-                        <div class="stat-value">${avg.toFixed(1)}</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-label">Minimum</div>
-                        <div class="stat-value">${min}</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-label">Maximum</div>
-                        <div class="stat-value">${max}</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-label">Votes</div>
-                        <div class="stat-value">${votes.length}</div>
-                    </div>
-                </div>
-            `;
-            resultsDiv.classList.remove('hidden');
         }
 
         function resetVotes() {
             revealed = false;
+            players.forEach(p => p.vote = null);
             myVote = null;
-            
-            for (let id in participants) {
-                participants[id].vote = null;
+
+            sendAction({ type: 'reset' });
+
+            document.getElementById('results').style.display = 'none';
+            renderPlayers();
+            renderCards();
+        }
+
+        function showResults() {
+            const votes = Array.from(players.values())
+                .map(p => p.vote)
+                .filter(v => v !== null && v !== '?' && v !== '☕');
+
+            if (votes.length === 0) return;
+
+            const numericVotes = votes.map(v => parseFloat(v)).filter(v => !isNaN(v));
+
+            if (numericVotes.length === 0) {
+                document.getElementById('results').innerHTML = '<h3>No numeric votes to analyze</h3>';
+                document.getElementById('results').style.display = 'block';
+                return;
             }
-            
-            broadcast({ type: 'reset' });
-            updateParticipants();
-            document.getElementById('results').classList.add('hidden');
-            document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
-        }
 
-        function leaveRoom() {
-            // Proceed without confirmation: no alerts/dialogs
-            shouldAutoReconnect = false;
-            stopReconnectLoop();
-            clearSession();
-            try { if (onMsgUnsub) onMsgUnsub(); } catch(e){}
-            try { if (room) room.leave(); } catch(e){}
-            redirectToLogin('You left the room');
-        }
+            const sum = numericVotes.reduce((a, b) => a + b, 0);
+            const avg = sum / numericVotes.length;
+            const min = Math.min(...numericVotes);
+            const max = Math.max(...numericVotes);
 
-        function closeRoom() {
-            if (!isHost) return;
-            // Proceed without confirmation: no alerts/dialogs
-            shouldAutoReconnect = false;
-            broadcast({ type: 'room_closed' });
-            
-            setTimeout(() => {
-                stopReconnectLoop();
-                clearSession();
-                try { if (onMsgUnsub) onMsgUnsub(); } catch(e){}
-                try { if (room) room.leave(); } catch(e){}
-                redirectToLogin('Room closed');
-            }, 500);
-        }
-
-        function redirectToLogin(message = '') {
-            // Disable any auto-reconnect attempts triggered by async events
-            shouldAutoReconnect = false;
-            // Ensure any connecting overlay is hidden
-            hideConnecting();
-            // Capture the last room ID so we can prefill the Join form
-            const lastRoomId = roomId;
-            // Retrieve stored name to prefill both name inputs
-            const storedNameOnly = localStorage.getItem('pp_name');
-
-            // Clear state
-            peer = null;
-            connections = [];
-            participants = {};
-            myVote = null;
-            revealed = false;
-            isHost = false;
-            roomId = null;
-            
-            // Reset URL
-            window.history.pushState({}, '', window.location.pathname);
-            
-            // Show login screen (offer both Create and Join like on the home page)
-            // Reset control buttons visibility to defaults
-            const leaveBtnReset = document.getElementById('leaveBtn');
-            if (leaveBtnReset) leaveBtnReset.style.display = 'inline-block';
-            const closeBtnReset = document.getElementById('closeBtn');
-            if (closeBtnReset) closeBtnReset.style.display = 'none';
-            document.getElementById('gameSection').classList.add('hidden');
-            document.getElementById('joinSection').classList.remove('hidden');
-            document.getElementById('joinSection').innerHTML = `
-                ${message ? `<div style=\"background: #fed7d7; color: #c53030; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #fc8181;\">${message}</div>` : ''}
-                <div class=\"auth-grid\">
-                    <div class=\"auth-card\">
-                        <h3>Start a room</h3>
-                        <div class=\"row\">
-                            <input type=\"text\" id=\"nameInput\" placeholder=\"Your name\" value=\"${storedNameOnly ? storedNameOnly : ''}\" onkeypress=\"handleEnter(event, 'create')\" />
-                            <button onclick=\"createSession()\">Create Room</button>
-                        </div>
+            const resultsHtml = `
+                <h3>Results</h3>
+                <div class="result-stats">
+                    <div class="stat">
+                        <div class="stat-value">${avg.toFixed(1)}</div>
+                        <div class="stat-label">Average</div>
                     </div>
-                    <div class=\"auth-card\">
-                        <h3>Join a room</h3>
-                        <div class=\"row\">
-                            <input type=\"text\" id=\"nameInputJoin\" placeholder=\"Your name\" value=\"${storedNameOnly ? storedNameOnly : ''}\" onkeypress=\"handleEnter(event, 'join')\" />
-                            <input type=\"text\" id=\"sessionIdInput\" placeholder=\"Room ID\" value=\"${lastRoomId ? lastRoomId : ''}\" onkeypress=\"handleEnter(event, 'join')\" />
-                            <button onclick=\"joinSession()\">Join Room</button>
-                        </div>
+                    <div class="stat">
+                        <div class="stat-value">${min}</div>
+                        <div class="stat-label">Minimum</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value">${max}</div>
+                        <div class="stat-label">Maximum</div>
                     </div>
                 </div>
             `;
-            
-            // Reset header
-            document.getElementById('yourName').textContent = '-';
-            document.getElementById('sessionId').textContent = '-';
-            document.getElementById('connectionStatus').textContent = 'Disconnected';
+
+            document.getElementById('results').innerHTML = resultsHtml;
+            document.getElementById('results').style.display = 'block';
         }
+
+        function copyUrl() {
+            const url = document.getElementById('shareUrl').textContent;
+            navigator.clipboard.writeText(url).then(() => {
+                openModal('URL copied to clipboard! Share it with your team.', 'success', 'Copied');
+            }).catch(() => {
+                openModal('Failed to copy URL. Please copy it manually.', 'error', 'Copy failed');
+            });
+        }
+
+        function updateConnectionStatus() {
+            const status = document.getElementById('connectionStatus');
+            if (players.size > 1) {
+                status.textContent = `✓ Connected with ${players.size - 1} player(s)`;
+                status.className = 'connection-status connected';
+            } else {
+                status.textContent = 'Waiting for players to join...';
+                status.className = 'connection-status';
+            }
+        }
+
+        window.gameApp = {
+            createRoom,
+            joinRoom,
+            revealVotes,
+            resetVotes,
+            copyUrl
+        };
     </script>
 </body>
 </html>
