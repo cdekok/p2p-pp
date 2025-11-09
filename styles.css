@@ -27,7 +27,7 @@ h1 {
     color: #667eea;
     text-align: center;
     margin-bottom: 30px;
-    font-size: 2.5em;
+    font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.5rem);
 }
 
 .setup-screen, .game-screen {
@@ -322,3 +322,54 @@ button:active {
 .modal-success .modal-dialog { border-color: #28a745; }
 .modal-error .modal-title { color: #721c24; }
 .modal-error .modal-dialog { border-color: #dc3545; }
+
+/* --- Responsive and mobile alignment improvements --- */
+/* Scale main title gracefully across devices */
+h1 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.5rem); }
+
+/* Improve room info wrapping for long URLs on mobile */
+.room-info small { line-height: 1.35; }
+#shareUrl { word-break: break-all; overflow-wrap: anywhere; }
+
+/* Actions: stack on small screens */
+@media (max-width: 480px) {
+  body { padding: 12px; }
+  .container {
+    padding: 20px;
+    border-radius: 14px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+  }
+  .room-info { padding: 12px; }
+  .players {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+  .cards-container { gap: 10px; }
+  .card {
+    width: 64px;
+    height: 90px;
+    font-size: 20px;
+    border-width: 2px;
+  }
+  .player-vote { font-size: 28px; }
+  .actions { flex-direction: column; gap: 10px; }
+  .results { padding: 16px; }
+  .stat-value { font-size: 28px; }
+  .stat-label { font-size: 12px; }
+  .modal-dialog { padding: 16px; width: calc(100% - 24px); }
+}
+
+/* Tablet tweaks */
+@media (min-width: 481px) and (max-width: 820px) {
+  .container { padding: 28px; }
+  .players { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .card { width: 72px; height: 100px; font-size: 22px; }
+}
+
+/* Respect iOS safe areas */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+}
