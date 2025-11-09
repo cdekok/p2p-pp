@@ -3,17 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+        <meta id="metaThemeColor" name="theme-color" content="#667eea">
     <title>P2P Planning Poker</title>
+    <script>
+      (function() {
+        try {
+          const key = 'theme';
+          const saved = localStorage.getItem(key);
+          const pref = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          const theme = saved === 'light' || saved === 'dark' ? saved : pref;
+          document.documentElement.setAttribute('data-theme', theme);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f1324' : '#667eea');
+        } catch (e) {
+          // no-op
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <h1>🃏 Planning Poker</h1>
+        <div class="header">
+            <h1>🃏 Planning Poker</h1>
+            <button id="themeToggle" class="btn-inline theme-toggle" type="button" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
+        </div>
 
         <div class="setup-screen active">
             <div class="setup-grid" role="group" aria-label="Room setup options">
                 <section class="setup-card" aria-labelledby="createHeading">
-                    <h2 id="createHeading" style="margin-bottom: 15px; color: #333; font-size: 1.25rem;">Create a new room</h2>
+                    <h2 id="createHeading" style="margin-bottom: 15px; font-size: 1.25rem;">Create a new room</h2>
                     <form id="createForm" novalidate>
                         <div class="input-group">
                             <label for="createName">Your name</label>
@@ -25,7 +45,7 @@
                 </section>
 
                 <section class="setup-card" aria-labelledby="joinHeading">
-                    <h2 id="joinHeading" style="margin-bottom: 15px; color: #333; font-size: 1.25rem;">Join an existing room</h2>
+                    <h2 id="joinHeading" style="margin-bottom: 15px; font-size: 1.25rem;">Join an existing room</h2>
                     <form id="joinForm" novalidate>
                         <div class="input-group">
                             <label for="joinName">Your name</label>
@@ -50,16 +70,16 @@
                 <strong>Room:</strong> <span id="currentRoom"></span> |
                 <strong>You:</strong> <span id="currentPlayer"></span>
                 <br>
-                <small style="color: #666; margin-top: 5px; display: block;">
-                    Share this URL: <strong id="shareUrl" style="color: #667eea;"></strong>
-                    <button id="copyUrlBtn" style="display: inline; width: auto; padding: 5px 10px; font-size: 12px; margin-left: 10px;">📋 Copy</button>
+                <small style="margin-top: 5px; display: block;">
+                    Share this URL: <strong id="shareUrl"></strong>
+                    <button id="copyUrlBtn" style="display: inline; width: auto; padding: 5px 10px; font-size: 12px;">📋 Copy</button>
                 </small>
             </div>
 
-            <h3 style="margin-bottom: 15px; color: #333;">Players</h3>
+            <h3 style="margin-bottom: 15px;">Players</h3>
             <div class="players" id="players"></div>
 
-            <h3 style="margin-bottom: 15px; color: #333;">Select Your Card</h3>
+            <h3 style="margin-bottom: 15px;">Select Your Card</h3>
             <div class="cards-container" id="cards"></div>
 
             <div class="actions">
@@ -95,6 +115,27 @@
         let myPeerId;
         let myPlayerName;
         const NAME_KEY = 'userName';
+
+                // Theme toggle
+                const THEME_KEY = 'theme';
+                function getCurrentTheme() {
+                    return document.documentElement.getAttribute('data-theme') || 'light';
+                }
+                function applyTheme(theme, persist = true) {
+                    document.documentElement.setAttribute('data-theme', theme);
+                    if (persist) {
+                        try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+                    }
+                    const meta = document.querySelector('meta[name="theme-color"]');
+                    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f1324' : '#667eea');
+                    const btn = document.getElementById('themeToggle');
+                    if (btn) {
+                        const toTheme = theme === 'dark' ? 'light' : 'dark';
+                        btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+                        btn.title = `Switch to ${toTheme} mode`;
+                        btn.setAttribute('aria-label', btn.title);
+                    }
+                }
 
         function generateRoomId() {
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -172,6 +213,15 @@
         }
 
         window.addEventListener('DOMContentLoaded', () => {
+                    // Initialize theme toggle UI
+                    applyTheme(getCurrentTheme(), false);
+                    const themeBtn = document.getElementById('themeToggle');
+                    if (themeBtn) {
+                        themeBtn.addEventListener('click', () => {
+                            const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
+                            applyTheme(next, true);
+                        });
+                    }
             const urlRoom = getRoomFromURL();
             if (urlRoom) {
                 const joinRoomInput = document.getElementById('joinRoomId');
