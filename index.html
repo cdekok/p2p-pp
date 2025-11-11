@@ -116,6 +116,92 @@
         let myPlayerName;
         const NAME_KEY = 'userName';
 
+        // --- Connectivity configuration (ICE/TURN) ---
+        const ICE_KEY = 'iceServers';
+        const TURN_KEY = 'turnServer';
+        const TURN_USER_KEY = 'turnUser';
+        const TURN_PASS_KEY = 'turnPass';
+
+        function readQueryParam(name) {
+            const params = new URLSearchParams(window.location.search);
+            return params.get(name);
+        }
+
+        function loadIceServersFromStorage() {
+            try {
+                const stored = localStorage.getItem(ICE_KEY);
+                if (stored) return JSON.parse(stored);
+            } catch (e) {}
+            return null;
+        }
+
+        function saveIceServersToStorage(ice) {
+            try { localStorage.setItem(ICE_KEY, JSON.stringify(ice)); } catch (e) {}
+        }
+
+        function applyTurnFromURL() {
+            const turn = readQueryParam('turn');
+            const turnUser = readQueryParam('turnUser');
+            const turnPass = readQueryParam('turnPass');
+            if (turn) {
+                try { localStorage.setItem(TURN_KEY, turn); } catch (e) {}
+            }
+            if (turnUser) {
+                try { localStorage.setItem(TURN_USER_KEY, turnUser); } catch (e) {}
+            }
+            if (turnPass) {
+                try { localStorage.setItem(TURN_PASS_KEY, turnPass); } catch (e) {}
+            }
+        }
+
+        function buildDefaultIceServers() {
+            // Public STUN list as baseline
+            const stun = [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun.cloudflare.com:3478' },
+                { urls: 'stun:stun.stunprotocol.org:3478' },
+                { urls: 'stun:stun.services.mozilla.com' }
+            ];
+            const turnServer = (() => { try { return localStorage.getItem(TURN_KEY) || ''; } catch (e) { return ''; } })();
+            const turnUser = (() => { try { return localStorage.getItem(TURN_USER_KEY) || ''; } catch (e) { return ''; } })();
+            const turnPass = (() => { try { return localStorage.getItem(TURN_PASS_KEY) || ''; } catch (e) { return ''; } })();
+            const ice = [...stun];
+            if (turnServer) {
+                ice.push({ urls: `turn:${turnServer}`, username: turnUser || undefined, credential: turnPass || undefined });
+                // Also add TLS TURN if host likely supports it
+                if (!turnServer.startsWith('turns:')) {
+                    ice.push({ urls: `turns:${turnServer}`, username: turnUser || undefined, credential: turnPass || undefined });
+                }
+            }
+            return ice;
+        }
+
+        function getRtcConfig() {
+            // URL override: ice param can be a JSON-encoded array of servers (URI encoded)
+            const iceFromUrl = readQueryParam('ice');
+            if (iceFromUrl) {
+                try {
+                    const decoded = JSON.parse(decodeURIComponent(iceFromUrl));
+                    if (Array.isArray(decoded)) {
+                        saveIceServersToStorage(decoded);
+                        return { iceServers: decoded, iceTransportPolicy: 'all' };
+                    }
+                } catch (e) {
+                    console.warn('Invalid ice param, ignoring');
+                }
+            }
+            // Respect stored custom ICE servers if present
+            const stored = loadIceServersFromStorage();
+            if (stored && Array.isArray(stored) && stored.length) {
+                return { iceServers: stored, iceTransportPolicy: 'all' };
+            }
+            // Apply TURN from URL (if any) to defaults
+            applyTurnFromURL();
+            return { iceServers: buildDefaultIceServers(), iceTransportPolicy: 'all' };
+        }
+
                 // Theme toggle
                 const THEME_KEY = 'theme';
                 function getCurrentTheme() {
@@ -384,16 +470,30 @@
             myPlayerName = playerName;
 
             const config = {
-                appId: 'planning-poker-p2p'
+                appId: 'planning-poker-p2p',
+                rtcConfig: getRtcConfig()
             };
 
+            console.log('[RTC] Using rtcConfig:', JSON.stringify(config.rtcConfig));
             room = trysteroJoin(config, roomId);
             myPeerId = room.selfId;
 
             document.getElementById('currentRoom').textContent = roomId;
             document.getElementById('currentPlayer').textContent = playerName;
 
-            const shareUrl = window.location.origin + window.location.pathname + '?room=' + roomId;
+            // Build share URL: keep any connectivity params (e.g., TURN) so others inherit settings
+            const share = new URL(window.location.origin + window.location.pathname);
+            const currentParams = new URLSearchParams(window.location.search);
+            currentParams.set('room', roomId);
+            // Avoid leaking unknown sensitive params beyond TURN/ICE by only keeping known keys
+            const allowed = new URLSearchParams();
+            for (const [k, v] of currentParams.entries()) {
+                if (['room', 'turn', 'turnUser', 'turnPass', 'ice'].includes(k)) {
+                    allowed.set(k, v);
+                }
+            }
+            share.search = allowed.toString();
+            const shareUrl = share.toString();
             document.getElementById('shareUrl').textContent = shareUrl;
 
             players.set(myPeerId, {
